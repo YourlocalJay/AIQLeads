@@ -1,141 +1,81 @@
 # AIQLeads MVP Overview
 
-## Core Features
+## 1. Introduction
+AIQLeads is an AI-driven real estate lead marketplace designed to:
+- Aggregate property leads from multiple sources (Zillow, Craigslist, FSBO, Facebook).
+- Provide real-time data cleaning, fraud detection, and quality scoring for leads.
+- Offer dynamic pricing and credit-based purchasing to real estate agents.
+- Deliver region-specific insights and recommendations, starting with Las Vegas, Dallas/Ft. Worth, Austin, and Phoenix.
 
-### 1. Lead Marketplace
-- Geospatial-based lead search and filtering
-- Multi-tier credit system for lead purchases
-- Fraud detection and lead validation
-- Advanced cart management with timers
+This MVP focuses on **core marketplace functionality**, while integrating **LLM-powered** data cleaning, **dynamic pricing**, and a **multi-tier credit system**.
 
-### 2. AI-Powered Features
-- Dynamic pricing based on market demand and lead quality
-- Intelligent lead recommendations using embeddings
-- Automated lead data cleaning and enrichment
-- Fraud detection using machine learning
+---
 
-### 3. Geographic Focus
-Initial MVP targets four key markets:
-- Las Vegas
-- Dallas/Ft. Worth
-- Austin
-- Phoenix
+## 2. Core Features
 
-### 4. Data Sources
-- Multiple listing services (MLS)
-- For sale by owner (FSBO) listings
-- Social media platforms
-- Local classifieds
-- Professional networks
+1. **Lead Aggregation & Data Cleaning**  
+   - Scrape leads from major real estate platforms and city-specific sources.  
+   - Use LLMs (OpenAI, Anthropic, or similar) to clean and normalize listing data.
 
-## Technical Components
+2. **Fraud Detection & Lead Scoring**  
+   - Assign a fraud score and quality score using AI heuristics (duplicate detection, suspicious patterns).  
+   - Enhance user trust by filtering out low-quality or fraudulent listings.
 
-### 1. Backend Infrastructure
-- FastAPI for high-performance API endpoints
-- PostgreSQL with PostGIS for geospatial data
-- Redis for caching and cart management
-- Elasticsearch for advanced search capabilities
+3. **Credit-Based Purchasing**  
+   - Users buy credits to purchase leads.  
+   - Different tiers (Basic, Pro, Enterprise) offer varying credit costs and features.
 
-### 2. AI/ML Pipeline
-- LangChain/OpenAI integration for data processing
-- Vector embeddings for lead recommendations
-- Dynamic pricing models
-- Fraud detection algorithms
+4. **Dynamic Pricing**  
+   - Prices adapt in real time based on lead demand, quality, and user tier.  
+   - Align revenue with market activity and lead scarcity.
 
-### 3. Data Aggregation
-- Automated scraping pipeline
-- Data cleaning and normalization
-- Real-time updates
-- Quality validation
+5. **Cart Management & Timers**  
+   - Global cart timer (e.g., 15 minutes) plus individual lead timers.  
+   - Premium features to extend hold periods (24-hour, 3-day, 7-day).
 
-### 4. User Management
-- Multi-tier subscription system
-- Credit-based purchasing
-- Usage tracking and analytics
-- Personalized recommendations
+6. **AI-Powered Recommendations**  
+   - Embedding-based similarity for personalized lead suggestions.  
+   - Region-specific insights for targeted buyer preferences.
 
-## MVP Success Metrics
+7. **Advanced Search**  
+   - Elasticsearch/OpenSearch integration for robust text search, faceted filters, and potential fuzzy matching.  
+   - PostGIS-based geospatial queries (e.g., leads within X miles of a city center).
 
-### 1. Performance Metrics
-- API response time < 200ms
-- 99.9% uptime
-- < 1% error rate in lead data
-- Zero duplicate leads
+---
 
-### 2. Business Metrics
-- Lead acquisition cost
-- Customer retention rate
-- Credit system efficiency
-- Market penetration in target cities
+## 3. MVP Goals
 
-### 3. User Engagement
-- Daily active users
-- Average session duration
-- Lead conversion rate
-- User satisfaction score
+1. **High-Quality Lead Acquisition**  
+   - Provide real estate agents with reliable, accurately priced leads.  
+   - Reduce noise via fraud detection and AI-driven cleaning.
 
-## Development Phases
+2. **Scalable AI Infrastructure**  
+   - Leverage LLMs for data normalization and advanced recommendation.  
+   - Ensure future flexibility (adding new scrapers, new markets, or more complex AI pipelines).
 
-### Phase 1: Core Infrastructure
-- Basic API setup
-- Database implementation
-- Authentication system
-- Initial scraping pipeline
+3. **User-Friendly Purchasing Flow**  
+   - Straightforward cart/checkout interface.  
+   - Clear, real-time credit balance and dynamic price updates.
 
-### Phase 2: Lead Management
-- Lead data model
-- Search functionality
-- Cart system
-- Credit system
+4. **Regional Market Optimization**  
+   - Focus on high-demand metro areas (Las Vegas, DFW, Austin, Phoenix).  
+   - Tailor scraping strategies and pricing models for each market’s unique needs.
 
-### Phase 3: AI Integration
-- Dynamic pricing
-- Lead recommendations
-- Fraud detection
-- Data enrichment
+---
 
-### Phase 4: Market Launch
-- Beta testing
-- Performance optimization
-- Security auditing
-- Initial market deployment
+## 4. MVP Success Criteria
 
-## Post-MVP Roadmap
+- **Lead Quality**: Minimal fraudulent or duplicate leads; high lead ROI for agents.  
+- **User Adoption**: Real estate agents see tangible value and continue buying credits.  
+- **Scalability**: The system handles thousands of new leads daily without performance issues.  
+- **Conversion Rate**: Significant portion of leads purchased after recommendation or search.
 
-### 1. Feature Expansion
-- Additional markets
-- Enhanced AI capabilities
-- Mobile application
-- Advanced analytics
+---
 
-### 2. Integration Capabilities
-- CRM system integration
-- Marketing automation
-- Payment processing
-- Third-party APIs
+## 5. Roadmap Beyond MVP
 
-### 3. Platform Growth
-- Scalability improvements
-- New data sources
-- Enhanced user features
-- Market expansion
-
-## Risk Mitigation
-
-### 1. Technical Risks
-- Data accuracy monitoring
-- System redundancy
-- Regular security audits
-- Performance optimization
-
-### 2. Business Risks
-- Market validation
-- Pricing strategy
-- Competition analysis
-- Regulatory compliance
-
-### 3. Operational Risks
-- Data source reliability
-- System scalability
-- Support infrastructure
-- Resource allocation
+Future enhancements may include:
+- **Enterprise Integrations** with major CRMs for lead auto-import.  
+- **Marketing Tools** (Mailchimp, HubSpot) to nurture leads.  
+- **Further AI/ML** expansions (reinforcement learning for pricing, advanced user-behavior analytics).  
+- **Geo-Fenced Advertising** and localized alert subscriptions.
