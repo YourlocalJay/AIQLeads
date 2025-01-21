@@ -1,81 +1,69 @@
 # AIQLeads MVP Overview
 
 ## 1. Introduction
-AIQLeads is an AI-driven real estate lead marketplace designed to:
-- Aggregate property leads from multiple sources (Zillow, Craigslist, FSBO, Facebook).
-- Provide real-time data cleaning, fraud detection, and quality scoring for leads.
-- Offer dynamic pricing and credit-based purchasing to real estate agents.
-- Deliver region-specific insights and recommendations, starting with Las Vegas, Dallas/Ft. Worth, Austin, and Phoenix.
+AIQLeads is an AI-driven lead marketplace designed to streamline real estate lead acquisition and management. The platform aggregates leads from multiple sources—like Zillow, Craigslist, FSBO, Facebook, LinkedIn, and more—then enriches them with AI-powered data cleaning, dynamic pricing, and fraud detection.
 
-This MVP focuses on **core marketplace functionality**, while integrating **LLM-powered** data cleaning, **dynamic pricing**, and a **multi-tier credit system**.
+### Key Objectives
+1. **High-Quality Leads**  
+   - Leverage advanced scrapers, AI data cleaning, and fraud detection to ensure only the best leads are shown.
+2. **Efficient Purchasing Flow**  
+   - Implement credit-based transactions, cart timers, and geospatial filters for a frictionless user experience.
+3. **AI-Driven Personalization**  
+   - Provide customized lead recommendations and dynamic pricing that adapt to user preferences and market conditions.
+4. **Scalability & Regional Focus**  
+   - Target high-demand real estate markets (Las Vegas, Dallas/Ft. Worth, Austin, Phoenix) with modular, extensible scrapers.
 
 ---
 
-## 2. Core Features
+## 2. Core MVP Features
 
-1. **Lead Aggregation & Data Cleaning**  
-   - Scrape leads from major real estate platforms and city-specific sources.  
-   - Use LLMs (OpenAI, Anthropic, or similar) to clean and normalize listing data.
+1. **Lead Aggregation & Scraping**  
+   - Collect property listings from Zillow, Craigslist, FSBO, Facebook, and LinkedIn job/housing groups.  
+   - Region-specific scrapers (e.g., `las_vegas_scraper.py`, `austin_scraper.py`) ensure localized coverage.
 
-2. **Fraud Detection & Lead Scoring**  
-   - Assign a fraud score and quality score using AI heuristics (duplicate detection, suspicious patterns).  
-   - Enhance user trust by filtering out low-quality or fraudulent listings.
+2. **AI-Powered Data Cleaning & Fraud Detection**  
+   - Use LLMs (OpenAI, Anthropic, etc.) for data normalization, addressing incomplete or inconsistent fields.  
+   - Assign fraud and quality scores to each lead (e.g., detecting duplicates or suspicious patterns).
 
-3. **Credit-Based Purchasing**  
-   - Users buy credits to purchase leads.  
-   - Different tiers (Basic, Pro, Enterprise) offer varying credit costs and features.
+3. **Dynamic Pricing**  
+   - Calculate real-time lead prices based on:
+     - **Demand** (number of views, cart additions).  
+     - **Lead Quality** (property size, verified details).  
+     - **Market Trends** (regional demand surges).  
+   - Premium users may see discounted pricing or priority access.
 
-4. **Dynamic Pricing**  
-   - Prices adapt in real time based on lead demand, quality, and user tier.  
-   - Align revenue with market activity and lead scarcity.
+4. **Multi-Tier Credit System**  
+   - **Basic**, **Pro**, and **Enterprise** tiers with different credit purchase rates.  
+   - Credits deducted when purchasing or reserving leads.
 
 5. **Cart Management & Timers**  
-   - Global cart timer (e.g., 15 minutes) plus individual lead timers.  
-   - Premium features to extend hold periods (24-hour, 3-day, 7-day).
+   - **Global Timer**: Restricts total cart duration (e.g., 15 minutes).  
+   - **Item-Level Timers**: Each lead can have its own countdown for reservation.  
+   - **Premium Extensions**: Users can hold leads for 24 hours, 3 days, or 7 days depending on tier.
 
-6. **AI-Powered Recommendations**  
-   - Embedding-based similarity for personalized lead suggestions.  
-   - Region-specific insights for targeted buyer preferences.
+6. **Geospatial Search & Market Insights**  
+   - PostGIS integration for advanced location queries (e.g., within X miles of downtown).  
+   - Market-specific data (e.g., Dallas suburbs, Phoenix retirement communities) for better recommendations.
 
-7. **Advanced Search**  
-   - Elasticsearch/OpenSearch integration for robust text search, faceted filters, and potential fuzzy matching.  
-   - PostGIS-based geospatial queries (e.g., leads within X miles of a city center).
-
----
-
-## 3. MVP Goals
-
-1. **High-Quality Lead Acquisition**  
-   - Provide real estate agents with reliable, accurately priced leads.  
-   - Reduce noise via fraud detection and AI-driven cleaning.
-
-2. **Scalable AI Infrastructure**  
-   - Leverage LLMs for data normalization and advanced recommendation.  
-   - Ensure future flexibility (adding new scrapers, new markets, or more complex AI pipelines).
-
-3. **User-Friendly Purchasing Flow**  
-   - Straightforward cart/checkout interface.  
-   - Clear, real-time credit balance and dynamic price updates.
-
-4. **Regional Market Optimization**  
-   - Focus on high-demand metro areas (Las Vegas, DFW, Austin, Phoenix).  
-   - Tailor scraping strategies and pricing models for each market’s unique needs.
+7. **AI Recommendations**  
+   - Embedding-based system (OpenAI embeddings, Pinecone/Weaviate) to suggest leads based on user history, property similarities, and region.
 
 ---
 
-## 4. MVP Success Criteria
+## 3. Goals & Success Criteria
 
-- **Lead Quality**: Minimal fraudulent or duplicate leads; high lead ROI for agents.  
-- **User Adoption**: Real estate agents see tangible value and continue buying credits.  
-- **Scalability**: The system handles thousands of new leads daily without performance issues.  
-- **Conversion Rate**: Significant portion of leads purchased after recommendation or search.
+- **High Conversion**: Users purchase a large portion of recommended or searched leads.  
+- **Accurate & Clean Data**: Minimal time wasted on fraudulent or incomplete listings.  
+- **Scalability**: System can handle thousands of leads added daily across multiple markets.  
+- **Positive User Feedback**: Agents find the platform’s cart timers, dynamic pricing, and personalization valuable.
 
 ---
 
-## 5. Roadmap Beyond MVP
+## 4. Future Enhancements
 
-Future enhancements may include:
-- **Enterprise Integrations** with major CRMs for lead auto-import.  
-- **Marketing Tools** (Mailchimp, HubSpot) to nurture leads.  
-- **Further AI/ML** expansions (reinforcement learning for pricing, advanced user-behavior analytics).  
-- **Geo-Fenced Advertising** and localized alert subscriptions.
+- **Enterprise Integrations**: Sync leads with CRMs or marketing platforms.  
+- **More Markets**: Expand beyond the initial four cities using the modular scraper architecture.  
+- **Reinforcement Learning**: Continually refine pricing models based on purchase outcomes.  
+- **User Behavior Analytics**: Track detailed user interactions for deeper personalization and ad targeting.
+
+---
