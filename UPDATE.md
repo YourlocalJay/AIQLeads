@@ -1,8 +1,8 @@
-Here’s an updated version of your Implementation Tracker with the next steps added for building the market_insight_model.py and market_insight_schema.py. Additionally, the tracker has been updated to guide future steps in Market Insights development and testing:
+Here’s the updated Implementation Tracker in .md format:
 
-Implementation Tracker - AIQLeads Project
+# Implementation Tracker - AIQLeads Project
 
-Currently Implemented Components
+## Currently Implemented Components
 
 AIQLeads/
 ├── .github/
@@ -14,10 +14,10 @@ AIQLeads/
 │       └── file-ops.yml            # File Operations workflow
 ├── src/
 │   ├── config/
-│   │   ├── __init__.py
+│   │   ├── init.py
 │   │   └── settings.py             # Environment configuration and logging
 │   ├── database/
-│   │   ├── __init__.py
+│   │   ├── init.py
 │   │   └── postgres_manager.py     # Connection pooling and session management
 │   ├── models/
 │   │   ├── user_model.py           # User model with password policy
@@ -30,25 +30,26 @@ AIQLeads/
 │       ├── transaction_schema.py   # Transaction request/response validation
 │       └── subscription_schema.py  # Subscription request/response validation
 └── tests/
-    ├── database/
-    │   └── test_postgres_manager.py
-    ├── models/
-    │   ├── test_user_model.py
-    │   ├── test_lead_model.py
-    │   ├── test_transaction_model.py
-    │   └── test_subscription_model.py
-    ├── scripts/
-    │   ├── __init__.py
-    │   └── test_update_files.py    # Tests for GitHub automation scripts
-    └── workflows/
-        ├── __init__.py
-        ├── conftest.py             # Shared test fixtures
-        ├── test_ci_workflow.py     # CI workflow tests
-        └── test_cd_workflow.py     # CD workflow tests
+├── database/
+│   └── test_postgres_manager.py
+├── models/
+│   ├── test_user_model.py
+│   ├── test_lead_model.py
+│   ├── test_transaction_model.py
+│   └── test_subscription_model.py
+├── scripts/
+│   ├── init.py
+│   └── test_update_files.py    # Tests for GitHub automation scripts
+└── workflows/
+├── init.py
+├── conftest.py             # Shared test fixtures
+├── test_ci_workflow.py     # CI workflow tests
+└── test_cd_workflow.py     # CD workflow tests
 
-Next Implementation Target
+---
 
-1. Market Insights Backend
+## Next Implementation Target
+### Market Insights Backend
 
 src/models/
 └── market_insight_model.py         # Analytics and insights engine
@@ -56,74 +57,85 @@ src/models/
 src/schemas/
 └── market_insight_schema.py        # Analytics data validation
 
-Tasks:
-	1.	Define Market Insights Model:
-	•	Create market_insight_model.py with fields for:
-	•	Region (e.g., city/state).
-	•	Trending price insights.
-	•	Lead availability data.
-	•	Popular property types (e.g., single-family, condo).
-	•	Time on market statistics.
-	2.	Implement Schema for Validation:
-	•	Add a corresponding market_insight_schema.py in src/schemas/.
-	•	Include fields for API request/response validation.
-	•	Ensure type enforcement and validation for:
-	•	Nested data structures.
-	•	Optional vs. required fields.
-	3.	Database Table Setup:
-	•	Update Alembic migration scripts to reflect the new MarketInsights table in PostgreSQL.
-	4.	Test Implementation:
-	•	Add unit tests for market_insight_model.py in tests/models/.
-	•	Add schema validation tests in tests/schemas/test_market_insight_schema.py.
-	5.	Populate Initial Data:
-	•	Extend scripts/seed_db.py to populate test data for Market Insights.
+### Tasks
+1. **Define Market Insights Model**:
+   - Create `market_insight_model.py` with fields for:
+     - Region (e.g., city/state).
+     - Trending price insights.
+     - Lead availability data.
+     - Popular property types (e.g., single-family, condo).
+     - Time on market statistics.
 
-Next Implementation Steps
+2. **Implement Schema for Validation**:
+   - Add a corresponding `market_insight_schema.py` in `src/schemas/`.
+   - Include fields for API request/response validation.
+   - Ensure type enforcement and validation for:
+     - Nested data structures.
+     - Optional vs. required fields.
 
-Phase 3: Market Insights Data Aggregation
+3. **Database Table Setup**:
+   - Update Alembic migration scripts to reflect the new `MarketInsights` table in PostgreSQL.
 
-Tasks:
-	1.	Develop Aggregator Integration:
-	•	Update src/aggregator/pipeline.py to process scraped lead data into market insights.
-	•	Implement data grouping logic for:
-	•	Region-specific insights.
-	•	Pricing trends (mean, median, etc.).
-	•	Popular property types.
-	2.	Develop Insights API:
-	•	Create market_insights_controller.py in src/controllers/ for API endpoints:
-	•	GET /market-insights/{region}: Fetch market data for a specific city/region.
-	•	GET /market-insights/overview: General trends across all regions.
-	3.	Add Monitoring and Metrics:
-	•	Extend monitoring/metrics_service.py to track:
-	•	API response times for Market Insights.
-	•	Insights update latency after data ingestion.
+4. **Test Implementation**:
+   - Add unit tests for `market_insight_model.py` in `tests/models/`.
+   - Add schema validation tests in `tests/schemas/test_market_insight_schema.py`.
 
-Progress Metrics
+5. **Populate Initial Data**:
+   - Extend `scripts/seed_db.py` to populate test data for Market Insights.
 
-Phase Completion:
+---
 
-Phase	Description	Completion
-0	Scope & Repo Initialization	100%
-1	Infrastructure Setup	100%
-2	Database Models & Schemas	60%
-3	Market Insights Pipeline	0%
+## Next Implementation Steps
+### Phase 3: Market Insights Data Aggregation
+#### Tasks
+1. **Develop Aggregator Integration**:
+   - Update `src/aggregator/pipeline.py` to process scraped lead data into market insights.
+   - Implement data grouping logic for:
+     - Region-specific insights.
+     - Pricing trends (mean, median, etc.).
+     - Popular property types.
 
-Overall Project Completion: 45%
+2. **Develop Insights API**:
+   - Create `market_insights_controller.py` in `src/controllers/` for API endpoints:
+     - `GET /market-insights/{region}`: Fetch market data for a specific city/region.
+     - `GET /market-insights/overview`: General trends across all regions.
 
-Prompts for Future Phases
+3. **Add Monitoring and Metrics**:
+   - Extend `monitoring/metrics_service.py` to track:
+     - API response times for Market Insights.
+     - Insights update latency after data ingestion.
 
-For all future threads, include the following:
-	1.	Progress Reference:
-	•	Always reference this document to review completed and pending tasks.
-	2.	Next Task Focus:
-	•	For Phase 2, focus on market_insight_model.py and market_insight_schema.py.
-	•	Include next steps for testing, migration, and pipeline integration.
-	3.	Update Before Proceeding:
-	•	Ensure this document is updated before starting a new task or thread.
+---
 
-Key Development Guidelines
-	1.	Follow the Model Implementation Standards outlined earlier.
-	2.	Prioritize schema validation and unit tests to maintain stability.
-	3.	Ensure market_insight_model.py supports geospatial queries and trend analysis.
+## Progress Metrics
+### Phase Completion
+| Phase | Description                 | Completion |
+|-------|-----------------------------|------------|
+| 0     | Scope & Repo Initialization | 100%       |
+| 1     | Infrastructure Setup        | 100%       |
+| 2     | Database Models & Schemas   | **60%**    |
+| 3     | Market Insights Pipeline    | **0%**     |
 
-With this tracker, you can ensure all threads stay aligned while maintaining visibility over the MVP’s progress. Would you like me to generate the next Alembic migration script or draft the market_insight_model.py?
+### Overall Project Completion: **45%**
+
+---
+
+## Prompts for Future Phases
+1. **Progress Reference**:
+   - Always reference this document to review completed and pending tasks.
+
+2. **Next Task Focus**:
+   - For Phase 2, focus on `market_insight_model.py` and `market_insight_schema.py`.
+   - Include next steps for testing, migration, and pipeline integration.
+
+3. **Update Before Proceeding**:
+   - Ensure this document is updated before starting a new task or thread.
+
+---
+
+## Key Development Guidelines
+1. Follow the **Model Implementation Standards** outlined earlier.
+2. Prioritize schema validation and unit tests to maintain stability.
+3. Ensure `market_insight_model.py` supports geospatial queries and trend analysis.
+
+Let me know if you’d like me to expand or adjust any part of this document!
