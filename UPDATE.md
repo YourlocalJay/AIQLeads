@@ -1,35 +1,64 @@
-[Previous content remains the same...]
+### AIQLeads MVP Development Plan and Progress Tracker
 
-### Phase 1: Environment, CI/CD, and Base Infrastructure
+#### Overview
+This document provides a detailed breakdown of tasks for completing the AIQLeads MVP. It specifies all files being created or modified with their full paths, benchmarks for testing, and clear tracking of completed tasks. Testing information is included for every phase, with paths to test files and specific benchmarks for validation. All contributors must update this document before proceeding with new tasks.
+
+#### Current Phase: Phase 2 - Database Schema & Core Models
+#### Overall Completion: 16.67%
+
+---
+
+### Completed Phases
+
+### Phase 0: Define Scope & Repository Initialization ✅
+**Completion: 100%**
+All tasks completed including repository setup, documentation, and initial CI/CD configuration.
+
+### Phase 1: Environment, CI/CD, and Base Infrastructure ✅
+**Completion: 100%**
+Completed environment setup, Docker configuration, and integration tests.
+
+---
+
+### Current Phase
+
+### Phase 2: Database Schema & Core Models
 **Steps:**
-1. ✅ Set up Python environment with necessary libraries
+1. Define database models for:
+   - Users
+     - **Full Paths:** `src/models/user_model.py`
+   - Leads
+     - **Full Paths:** `src/models/lead_model.py`
+   - Transactions
+     - **Full Paths:** `src/models/transaction_model.py`
+   - Subscriptions
+     - **Full Paths:** `src/models/subscription_model.py`
+   - Market Insights
+     - **Full Paths:** `src/models/market_insights_model.py`
+2. Enable PostGIS and add geospatial fields to LeadModel
+3. Write initial Alembic migrations
    - **Full Paths:**
-     - ✅ `requirements.txt`
-     - ✅ `.env.example`
-2. ✅ Create Dockerfile and docker-compose.yml
-   - **Full Paths:**
-     - ✅ `Dockerfile`
-     - ✅ `docker-compose.yml`
-3. ✅ Add GitHub Actions workflows for CI/CD
-   - **Full Paths:**
-     - ✅ `.github/workflows/ci.yml`
-     - ✅ `.github/workflows/cd.yml`
-4. ✅ Test environment setup and container builds
-   - **Full Paths:**
-     - ✅ `tests/integration/test_docker_setup.py`
+     - `migrations/versions/initial_migration.py`
+4. Test basic CRUD operations
 
 **Testing Information:**
-- ✅ Test containerized services and environment setup
+- Validate CRUD operations for all models
   - **Full Paths:**
-    - ✅ `tests/integration/test_docker_setup.py`
+    - `tests/unit/test_user_model.py`
+    - `tests/unit/test_lead_model.py`
+    - `tests/unit/test_transaction_model.py`
+    - `tests/unit/test_subscription_model.py`
+    - `tests/unit/test_market_insights_model.py`
+- Test Alembic migrations
+  - **Full Paths:**
+    - `tests/integration/test_alembic_migrations.py`
 
 **Benchmarks:**
-- ✅ Docker containers must build and run without errors
-- ✅ GitHub Actions workflows must successfully execute
+- Database tables created and verified
+- CRUD tests pass for all models
 
 **Completion Metrics:**
-- Tasks Completed: 4/4
-- Phase Completion: 100%
-- Overall Completion: 16.67%
+- Tasks Completed: 0/4
+- Phase Completion: 0%
 
-[Rest of the file remains unchanged...]
+[Rest of phases remain unchanged...]
