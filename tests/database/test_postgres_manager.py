@@ -129,3 +129,47 @@ class TestPostgresManager:
 
         mock_table1.__table__.create.assert_called_once_with(mock_engine, checkfirst=True)
         mock_table2.__table__.create.assert_called_once_with(mock_engine, checkfirst=True)
+
+    def test_health_check(self, mock_engine):
+        """Test database health check functionality"""
+        manager = PostgresManager()
+        manager._engine = mock_engine
+
+        mock_connection = MagicMock()
+        mock_connection.execute().scalar.side_effect = ["PostgreSQL 13.4", "1.2 GB"]
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        health_status = manager.health_check()
+
+        assert health_status["status"] == "healthy"
+        assert "version" in health_status
+        assert "database_size" in health_status
+        assert "pool" in health_status
+        assert "timestamp" in health_status
+
+    def test_health_check_failure(self, mock_engine):
+        """Test health check failure handling"""
+        manager = PostgresManager()
+        manager._engine = mock_engine
+        mock_engine.connect.side_effect = Exception("Connection failed")
+
+        with pytest.raises(ConnectionError) as exc_info:
+            manager.health_check()
+        assert "health check failed" in str(exc_info.value)
+
+    def test_get_engine(self, mock_engine):
+        """Test engine getter"""
+        manager = PostgresManager()
+        manager._engine = mock_engine
+
+        engine = manager.get_engine()
+        assert engine == mock_engine
+
+    def test_get_engine_not_initialized(self):
+        """Test engine getter without initialization"""
+        manager = PostgresManager()
+        manager._engine = None
+
+        with pytest.raises(ConnectionError) as exc_info:
+            manager.get_engine()
+        assert "not initialized" in str(exc_info.value)
