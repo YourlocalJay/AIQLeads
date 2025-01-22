@@ -56,3 +56,76 @@ class TestPostgresManager:
 
         mock_create_engine.assert_called_once()
         mock_sessionmaker.assert_called_once()
+
+    @patch('src.database.postgres_manager.create_engine')
+    def test_initialization_failure(self, mock_create_engine):
+        """Test handling of initialization failures"""
+        mock_create_engine.side_effect = Exception("Connection failed")
+
+        with pytest.raises(ConnectionError) as exc_info:
+            PostgresManager()
+        assert "Database initialization failed" in str(exc_info.value)
+
+    def test_get_session_success(self, mock_session, mock_session_local):
+        """Test successful session creation and management"""
+        manager = PostgresManager()
+        manager._SessionLocal = mock_session_local
+        mock_session_local.return_value = mock_session
+
+        with manager.get_session() as session:
+            assert session == mock_session
+
+        mock_session.commit.assert_called_once()
+        mock_session.close.assert_called_once()
+        assert not mock_session.rollback.called
+
+    def test_get_session_transaction_failure(self, mock_session, mock_session_local):
+        """Test session rollback on transaction failure"""
+        manager = PostgresManager()
+        manager._SessionLocal = mock_session_local
+        mock_session_local.return_value = mock_session
+        mock_session.commit.side_effect = SQLAlchemyError("Transaction failed")
+
+        with pytest.raises(DatabaseError):
+            with manager.get_session() as session:
+                pass
+
+        mock_session.rollback.assert_called_once()
+        mock_session.close.assert_called_once()
+
+    def test_get_session_without_initialization(self):
+        """Test session creation without initialization"""
+        manager = PostgresManager()
+        manager._SessionLocal = None
+
+        with pytest.raises(ConnectionError) as exc_info:
+            with manager.get_session() as session:
+                pass
+        assert "not initialized" in str(exc_info.value)
+
+    @patch.object(Base.metadata, 'create_all')
+    def test_create_database_all_tables(self, mock_create_all, mock_engine):
+        """Test creation of all database tables"""
+        manager = PostgresManager()
+        manager._engine = mock_engine
+
+        manager.create_database()
+        mock_create_all.assert_called_once_with(mock_engine)
+
+    def test_create_database_specific_tables(self, mock_engine):
+        """Test creation of specific database tables"""
+        manager = PostgresManager()
+        manager._engine = mock_engine
+
+        mock_table1 = Mock()
+        mock_table1.__tablename__ = 'table1'
+        mock_table1.__table__ = Mock()
+
+        mock_table2 = Mock()
+        mock_table2.__tablename__ = 'table2'
+        mock_table2.__table__ = Mock()
+
+        manager.create_database([mock_table1, mock_table2])
+
+        mock_table1.__table__.create.assert_called_once_with(mock_engine, checkfirst=True)
+        mock_table2.__table__.create.assert_called_once_with(mock_engine, checkfirst=True)
