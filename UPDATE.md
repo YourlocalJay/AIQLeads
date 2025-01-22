@@ -4,7 +4,7 @@
 This document provides a detailed breakdown of tasks for completing the AIQLeads MVP. It specifies all files being created or modified with their full paths, benchmarks for testing, and clear tracking of completed tasks. Testing information is included for every phase, with paths to test files and specific benchmarks for validation. All contributors must update this document before proceeding with new tasks.
 
 #### Current Phase: Phase 2 - Database Schema & Core Models
-#### Overall Completion: 16.67%
+#### Overall Completion: 20%
 
 ---
 
@@ -25,7 +25,7 @@ Completed environment setup, Docker configuration, and integration tests.
 ### Phase 2: Database Schema & Core Models
 **Steps:**
 1. Define database models for:
-   - Users
+   - Users ✅
      - **Full Paths:** `src/models/user_model.py`
    - Leads
      - **Full Paths:** `src/models/lead_model.py`
@@ -44,7 +44,7 @@ Completed environment setup, Docker configuration, and integration tests.
 **Testing Information:**
 - Validate CRUD operations for all models
   - **Full Paths:**
-    - `tests/unit/test_user_model.py`
+    - `tests/unit/test_user_model.py` ✅
     - `tests/unit/test_lead_model.py`
     - `tests/unit/test_transaction_model.py`
     - `tests/unit/test_subscription_model.py`
@@ -58,7 +58,7 @@ Completed environment setup, Docker configuration, and integration tests.
 - CRUD tests pass for all models
 
 **Completion Metrics:**
-- Tasks Completed: 0/4
-- Phase Completion: 0%
+- Tasks Completed: 1/4
+- Phase Completion: 20%
 
 [Rest of phases remain unchanged...]
