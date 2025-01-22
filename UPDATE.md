@@ -3,6 +3,13 @@
 ## Currently Implemented Components
 ```
 AIQLeads/
+├── .github/
+│   ├── scripts/
+│   │   └── update_files.py     # GitHub automation scripts
+│   └── workflows/
+│       ├── ci.yml             # Continuous Integration workflow
+│       ├── cd.yml             # Continuous Deployment workflow
+│       └── file-ops.yml       # File Operations workflow
 ├── src/
 │   ├── config/
 │   │   ├── __init__.py
@@ -23,11 +30,19 @@ AIQLeads/
 └── tests/
     ├── database/
     │   └── test_postgres_manager.py
-    └── models/
-        ├── test_user_model.py         # /tests/models/test_user_model.py
-        ├── test_lead_model.py         # /tests/models/test_lead_model.py
-        ├── test_transaction_model.py  # /tests/models/test_transaction_model.py
-        └── test_subscription_model.py # /tests/models/test_subscription_model.py
+    ├── models/
+    │   ├── test_user_model.py         # /tests/models/test_user_model.py
+    │   ├── test_lead_model.py         # /tests/models/test_lead_model.py
+    │   ├── test_transaction_model.py  # /tests/models/test_transaction_model.py
+    │   └── test_subscription_model.py # /tests/models/test_subscription_model.py
+    ├── scripts/
+    │   ├── __init__.py
+    │   └── test_update_files.py      # Tests for GitHub automation scripts
+    └── workflows/
+        ├── __init__.py
+        ├── conftest.py               # Shared test fixtures
+        ├── test_ci_workflow.py       # CI workflow tests
+        └── test_cd_workflow.py       # CD workflow tests
 ```
 
 ## Next Implementation Target
@@ -67,7 +82,7 @@ src/schemas/
    - Integration tests
    - Performance testing
    - Edge case handling ✓
-   - Mocking strategies
+   - Mocking strategies ✓
 
 ## Recent Updates
 1. **Transaction Model Implementation (2025-01-22)**
@@ -84,6 +99,14 @@ src/schemas/
    - Added subscription status state machine
    - Created comprehensive validation schema
    - Full test coverage for subscription operations
+
+3. **CI/CD Implementation (2025-01-22)**
+   - Added GitHub Actions workflows for CI/CD
+   - Implemented Docker layer caching
+   - Added comprehensive test coverage for workflows
+   - Setup automated dependency updates
+   - Configured PostGIS and Redis services
+   - Added deployment automation for tagged releases
 
 ## Upcoming Features
 1. **Market Insights**
@@ -106,11 +129,14 @@ src/schemas/
    - Pydantic 2.0+
    - FastAPI 0.100+
    - pycountry (added for currency validation)
+   - PyYAML (added for workflow testing)
+   - pytest-mock (added for test mocking)
+   - PyGithub (added for automation)
 
 3. **Infrastructure:**
-   - Docker containerization
+   - Docker containerization ✓
    - AWS deployment
-   - CI/CD pipeline
+   - CI/CD pipeline ✓
    - Monitoring setup
 
 ## Documentation Requirements
