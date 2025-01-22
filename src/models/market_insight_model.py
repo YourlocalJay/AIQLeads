@@ -1,147 +1,129 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional, List, Dict
 from sqlalchemy import Column, Integer, String, DateTime, Float, JSON, ForeignKey, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from geoalchemy2 import Geography
+from sqlalchemy.exc import SQLAlchemyError
 from src.database import Base
 
+
 class MarketInsight(Base):
-    """Market Insight model for analytics and trend analysis.
-    
-    Handles:
-    - Market trend analysis
-    - Price predictions
-    - Geographical insights
-    - Historical data analysis
-    - Custom analytics reports
+    """
+    Market Insight model for analytics and regional market data.
+    Handles aggregated market statistics, trends, and geospatial analysis.
     """
     __tablename__ = 'market_insights'
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    location = Column(Geography('POINT'), nullable=False)
-    date_range = Column(ARRAY(DateTime), nullable=False)
-    metrics = Column(JSONB, nullable=False)
-    analysis_type = Column(String(50), nullable=False)
-    parameters = Column(JSONB, nullable=False)
-    results = Column(JSONB, nullable=False)
-    confidence_score = Column(Float, nullable=False)
-    tags = Column(ARRAY(String), nullable=False)
+    region_name = Column(String(100), nullable=False)
+    location = Column(Geography(geometry_type='POINT', srid=4326), nullable=False)
+
+    # Market Statistics
+    median_price = Column(Float, nullable=False)
+    avg_price = Column(Float, nullable=False)
+    price_per_sqft = Column(Float, nullable=False)
+    inventory_count = Column(Integer, nullable=False)
+    avg_days_on_market = Column(Float, nullable=False)
+
+    # Property Type Distribution
+    property_type_distribution = Column(JSONB, nullable=False, default=dict)
+
+    # Trend Data
+    price_trends = Column(JSONB, nullable=False, default=dict)
+    demand_metrics = Column(JSONB, nullable=False, default=dict)
+
+    # Temporal Data
+    analysis_period_start = Column(DateTime, nullable=False)
+    analysis_period_end = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
-    user = relationship('User', back_populates='market_insights')
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user = relationship("User", back_populates="market_insights")
 
-    # Indexes for query optimization
+    # Indexes
     __table_args__ = (
-        Index('ix_market_insights_user_id', user_id),
-        Index('ix_market_insights_location', location, postgresql_using='gist'),
-        Index('ix_market_insights_date_range', date_range, postgresql_using='gin'),
-        Index('ix_market_insights_analysis_type', analysis_type),
-        Index('ix_market_insights_tags', tags, postgresql_using='gin'),
+        Index('ix_market_insights_region', region_name),
+        Index('ix_market_insights_created_at', created_at),
+        Index('idx_market_insights_location', location, postgresql_using='gist'),
     )
 
-    def __init__(
-        self,
-        user_id: int,
-        location: tuple,
-        date_range: List[datetime],
-        metrics: dict,
-        analysis_type: str,
-        parameters: dict,
-        results: dict,
-        confidence_score: float,
-        tags: List[str]
-    ):
-        """Initialize a market insight.
-
-        Args:
-            user_id: ID of the user creating the insight
-            location: Tuple of (longitude, latitude)
-            date_range: List of start and end dates for the analysis
-            metrics: Dictionary of metrics to analyze
-            analysis_type: Type of analysis (trend, prediction, etc.)
-            parameters: Analysis parameters and configurations
-            results: Analysis results and insights
-            confidence_score: Confidence level of the analysis (0-1)
-            tags: List of tags for categorization
-        """
-        self.user_id = user_id
-        self.location = f'POINT({location[0]} {location[1]})'
-        self.date_range = date_range
-        self.metrics = metrics
-        self.analysis_type = analysis_type
-        self.parameters = parameters
-        self.results = results
-        self.confidence_score = confidence_score
-        self.tags = tags
-
-    def update_analysis(
-        self,
-        metrics: Optional[dict] = None,
-        parameters: Optional[dict] = None,
-        results: Optional[dict] = None,
-        confidence_score: Optional[float] = None
-    ) -> None:
-        """Update analysis results and parameters.
-
-        Args:
-            metrics: New metrics to analyze
-            parameters: New analysis parameters
-            results: New analysis results
-            confidence_score: New confidence score
-        """
-        if metrics is not None:
-            self.metrics = metrics
-        if parameters is not None:
-            self.parameters = parameters
-        if results is not None:
-            self.results = results
-        if confidence_score is not None:
-            self.confidence_score = confidence_score
+    def update_price_trends(self, trends: dict) -> None:
+        """Update price trend data with validated metrics."""
+        required_keys = {'weekly', 'monthly', 'quarterly', 'yearly'}
+        if not all(key in trends for key in required_keys):
+            raise ValueError("Missing required trend periods")
+        self.price_trends = trends
         self.updated_at = datetime.utcnow()
 
-    def add_tags(self, new_tags: List[str]) -> None:
-        """Add new tags to the insight.
-
-        Args:
-            new_tags: List of tags to add
-        """
-        self.tags = list(set(self.tags + new_tags))
+    def update_demand_metrics(self, metrics: dict) -> None:
+        """Update demand metrics with validated indicators."""
+        required_keys = {'views', 'inquiries', 'offers'}
+        if not all(key in metrics for key in required_keys):
+            raise ValueError("Missing required demand metrics")
+        self.demand_metrics = metrics
         self.updated_at = datetime.utcnow()
 
-    def remove_tags(self, tags_to_remove: List[str]) -> None:
-        """Remove tags from the insight.
+    def get_nearby_insights(self, radius_miles: float = 5.0) -> Optional[List['MarketInsight']]:
+        """Retrieve market insights within a specified radius."""
+        from sqlalchemy import func
+        meters_per_mile = 1609.34
+        radius_meters = radius_miles * meters_per_mile
+        try:
+            return (
+                MarketInsight.query
+                .filter(
+                    func.ST_DWithin(
+                        MarketInsight.location,
+                        self.location,
+                        radius_meters
+                    )
+                )
+                .filter(MarketInsight.id != self.id)
+                .all()
+            )
+        except SQLAlchemyError as e:
+            print(f"Database query failed: {e}")
+            return None
 
-        Args:
-            tags_to_remove: List of tags to remove
-        """
-        self.tags = [tag for tag in self.tags if tag not in tags_to_remove]
-        self.updated_at = datetime.utcnow()
+    def calculate_market_velocity(self) -> float:
+        """Calculate market velocity based on inventory and days on market."""
+        if self.avg_days_on_market == 0:
+            return 0.0
+        return (self.inventory_count / self.avg_days_on_market) * 100
 
     def to_dict(self) -> dict:
-        """Convert insight to dictionary representation.
+        """Convert market insight to dictionary representation."""
+        location_data = None
+        if self.location:
+            location_data = {
+                'lat': float(self.location.latitude),
+                'lng': float(self.location.longitude)
+            }
 
-        Returns:
-            Dictionary containing insight data
-        """
         return {
             'id': self.id,
-            'user_id': self.user_id,
-            'location': self.location,
-            'date_range': [date.isoformat() for date in self.date_range],
-            'metrics': self.metrics,
-            'analysis_type': self.analysis_type,
-            'parameters': self.parameters,
-            'results': self.results,
-            'confidence_score': self.confidence_score,
-            'tags': self.tags,
+            'region_name': self.region_name,
+            'location': location_data,
+            'median_price': self.median_price,
+            'avg_price': self.avg_price,
+            'price_per_sqft': self.price_per_sqft,
+            'inventory_count': self.inventory_count,
+            'avg_days_on_market': self.avg_days_on_market,
+            'property_type_distribution': self.property_type_distribution,
+            'price_trends': self.price_trends,
+            'demand_metrics': self.demand_metrics,
+            'analysis_period_start': self.analysis_period_start.isoformat() if self.analysis_period_start else None,
+            'analysis_period_end': self.analysis_period_end.isoformat() if self.analysis_period_end else None,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }
 
+    def __repr__(self) -> str:
+        """String representation of the Market Insight model."""
+        return f'<MarketInsight {self.region_name}>'
     def __repr__(self) -> str:
         """String representation of the MarketInsight model."""
         return f'<MarketInsight {self.analysis_type} {self.created_at}>'
