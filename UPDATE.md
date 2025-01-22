@@ -13,27 +13,30 @@ AIQLeads/
 │   ├── models/
 │   │   ├── user_model.py       # User model with password policy
 │   │   ├── lead_model.py       # Lead model with geospatial features
-│   │   └── transaction_model.py # Transaction model with financial validation
+│   │   ├── transaction_model.py # Transaction model with financial validation
+│   │   └── subscription_model.py# Subscription management with billing cycles
 │   └── schemas/
 │       ├── user_schema.py      # User request/response validation
 │       ├── lead_schema.py      # Lead request/response validation
-│       └── transaction_schema.py# Transaction request/response validation
+│       ├── transaction_schema.py# Transaction request/response validation
+│       └── subscription_schema.py# Subscription request/response validation
 └── tests/
     ├── database/
     │   └── test_postgres_manager.py
     └── models/
-        ├── test_user_model.py
-        ├── test_lead_model.py
-        └── test_transaction_model.py
+        ├── test_user_model.py         # /tests/models/test_user_model.py
+        ├── test_lead_model.py         # /tests/models/test_lead_model.py
+        ├── test_transaction_model.py  # /tests/models/test_transaction_model.py
+        └── test_subscription_model.py # /tests/models/test_subscription_model.py
 ```
 
 ## Next Implementation Target
 ```
 src/models/
-└── subscription_model.py  # Subscription management with billing cycles
+└── market_insight_model.py  # Analytics and insights engine
 
 src/schemas/
-└── subscription_schema.py # Subscription request/response validation
+└── market_insight_schema.py # Analytics data validation
 ```
 
 ## Development Guidelines
@@ -74,14 +77,16 @@ src/schemas/
    - Enhanced schema validation with regex patterns
    - Added proper type hints and documentation
 
-## Upcoming Features
-1. **Subscription System**
-   - Plan management
-   - Billing cycles
-   - Usage tracking
-   - Upgrade/downgrade logic
+2. **Subscription System Implementation (2025-01-22)**
+   - Implemented subscription model with tier management
+   - Added billing cycle handling
+   - Implemented auto-renewal logic
+   - Added subscription status state machine
+   - Created comprehensive validation schema
+   - Full test coverage for subscription operations
 
-2. **Market Insights**
+## Upcoming Features
+1. **Market Insights**
    - Data analytics
    - Trend analysis
    - Reporting system
