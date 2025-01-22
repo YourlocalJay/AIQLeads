@@ -1,0 +1,54 @@
+name: File Operations
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  file-ops:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Update file content
+      run: |
+        import base64
+        import os
+        import json
+        
+        def update_file(path, content, message, branch='main'):
+            content_bytes = content.encode('utf-8')
+            content_b64 = base64.b64encode(content_bytes).decode('utf-8')
+            
+            return {
+                'message': message,
+                'content': content_b64,
+                'branch': branch,
+                'committer': {
+                    'name': 'GitHub Actions Bot',
+                    'email': 'actions@github.com'
+                }
+            }
+      shell: python
+
+    - name: Install GitHub CLI
+      run: |
+        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+        && sudo apt update \
+        && sudo apt install gh -y
