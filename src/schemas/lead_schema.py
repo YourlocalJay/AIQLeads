@@ -24,20 +24,14 @@ class LeadBase(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     website: Optional[HttpUrl] = None
-    
-    # Address Components
     street_address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
     postal_code: Optional[str] = None
     country: Optional[str] = None
-    
-    # Business Information
     industry: Optional[str] = None
     employee_count: Optional[int] = Field(None, ge=0)
     annual_revenue: Optional[float] = Field(None, ge=0)
-    
-    # Extended Attributes
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     notes: Optional[str] = Field(None, max_length=1000)
 
@@ -55,12 +49,6 @@ class LeadCreate(LeadBase):
     owner_id: int = Field(..., gt=0)
     location: Optional[CoordinatePoint] = None
     status: LeadStatus = Field(default=LeadStatus.NEW)
-    
-    @validator('status')
-    def validate_status(cls, v):
-        if v not in LeadStatus:
-            raise ValueError(f'Invalid status. Must be one of: {", ".join(s.value for s in LeadStatus)}')
-        return v
 
 class LeadUpdate(BaseModel):
     """Schema for updating leads"""
@@ -76,21 +64,6 @@ class LeadUpdate(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
 
-    @validator('company_name')
-    def validate_company_name(cls, v):
-        if v is not None and (len(v) < 1 or len(v) > 200):
-            raise ValueError('Company name must be between 1 and 200 characters')
-        return v
-
-    @validator('phone')
-    def validate_phone(cls, v):
-        if v is not None:
-            import re
-            phone_pattern = re.compile(r'^\+\d{1,3}[-]?\d{3}[-]?\d{3}[-]?\d{4}$')
-            if not phone_pattern.match(v):
-                raise ValueError('Invalid phone number format. Expected format: +1-234-567-8900')
-        return v
-
 class LeadInDB(LeadBase):
     """Schema for lead data as stored in database"""
     id: int
@@ -105,9 +78,6 @@ class LeadInDB(LeadBase):
 
     class Config:
         orm_mode = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
 
 class LeadResponse(LeadInDB):
     """Schema for lead data in API responses"""
