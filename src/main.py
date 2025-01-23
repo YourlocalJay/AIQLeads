@@ -1,8 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.config.settings import get_settings
-from src.api.middleware.health_check import init_health_check
-from src.api.v1.endpoints import health
+from src.api.v1.endpoints import api_router
 
 def create_app() -> FastAPI:
     settings = get_settings()
@@ -22,15 +21,7 @@ def create_app() -> FastAPI:
         allow_headers=['*']
     )
     
-    # Initialize health check
-    init_health_check(app)
-    
-    # Register routers
-    app.include_router(
-        health.router,
-        prefix=f'{settings.API_V1_PREFIX}',
-        tags=['Health']
-    )
+    app.include_router(api_router, prefix=settings.API_V1_PREFIX)
     
     return app
 
