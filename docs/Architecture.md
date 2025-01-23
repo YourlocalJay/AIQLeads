@@ -33,7 +33,7 @@ graph LR
     D --> E
     E --> F[Dynamic Pricing Service]
     E --> G[AI Recommendations Service]
-    G --> H[Vector DB (Pinecone/Weaviate)]
+    G --> H[Vector DB: Pinecone or Weaviate]
     E --> I[Cart & Payment Flows]
     I --> J[Credit System Service]
     E --> K[Monitoring & Alerts]
@@ -75,4 +75,3 @@ graph LR
    - Strengthen security for API endpoints and sensitive user data.
 
 ---
-
