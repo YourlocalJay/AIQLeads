@@ -3,6 +3,7 @@ from typing import Optional
 import asyncio
 from src.aggregator.exceptions import RateLimitExceeded
 
+
 class RateLimiter:
     """Token bucket rate limiter for API request management.
     
@@ -17,7 +18,13 @@ class RateLimiter:
         Args:
             rate_limit (int): Maximum number of tokens/requests per window
             window_size (int): Time window in seconds
+        
+        Raises:
+            ValueError: If rate_limit or window_size is invalid
         """
+        if rate_limit <= 0 or window_size <= 0:
+            raise ValueError("rate_limit and window_size must be positive integers")
+        
         self.rate_limit = rate_limit
         self.window_size = window_size
         self.tokens = rate_limit
@@ -31,13 +38,22 @@ class RateLimiter:
         self._replenish_tokens()
         return self.tokens
     
+    @property
+    def usage_percentage(self) -> float:
+        """Get rate limiter usage as a percentage."""
+        return 100 * (1 - self.tokens / self.rate_limit)
+    
     def _replenish_tokens(self) -> None:
         """Replenish tokens based on elapsed time."""
         now = datetime.utcnow()
-        if now >= self.next_reset:
-            self.tokens = self.rate_limit
+        elapsed_time = (now - self.last_update).total_seconds()
+        tokens_to_add = int((elapsed_time / self.window_size) * self.rate_limit)
+        
+        if tokens_to_add > 0:
+            self.tokens = min(self.rate_limit, self.tokens + tokens_to_add)
             self.last_update = now
-            self.next_reset = now + timedelta(seconds=self.window_size)
+            if self.tokens == self.rate_limit:
+                self.next_reset = now + timedelta(seconds=self.window_size)
     
     async def acquire(self, tokens: int = 1, wait: bool = True) -> None:
         """Acquire tokens for an operation.
@@ -49,6 +65,9 @@ class RateLimiter:
         Raises:
             RateLimitExceeded: If tokens unavailable and wait=False
         """
+        if tokens <= 0:
+            raise ValueError("Requested tokens must be a positive integer")
+        
         async with self._lock:
             self._replenish_tokens()
             
@@ -58,8 +77,8 @@ class RateLimiter:
             
             if not wait:
                 raise RateLimitExceeded(
-                    f'Rate limit exceeded. Available: {self.tokens}, '
-                    f'Requested: {tokens}, Next reset: {self.next_reset}'
+                    f"Rate limit exceeded. Available: {self.tokens}, "
+                    f"Requested: {tokens}, Next reset: {self.next_reset}"
                 )
             
             while self.tokens < tokens:
@@ -79,6 +98,25 @@ class RateLimiter:
         Returns:
             bool: True if tokens are available, False otherwise
         """
+        if tokens <= 0:
+            raise ValueError("Requested tokens must be a positive integer")
+        
         async with self._lock:
             self._replenish_tokens()
             return self.tokens >= tokens
+    
+    async def get_status(self) -> dict:
+        """Get detailed rate limiter status.
+        
+        Returns:
+            dict: Current rate limit status
+        """
+        async with self._lock:
+            self._replenish_tokens()
+            return {
+                "remaining_tokens": self.tokens,
+                "rate_limit": self.rate_limit,
+                "window_size": self.window_size,
+                "usage_percentage": self.usage_percentage,
+                "next_reset": self.next_reset.isoformat(),
+            }
