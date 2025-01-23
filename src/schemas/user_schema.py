@@ -33,9 +33,7 @@ class UserBase(BaseModel):
         """Validate and normalize phone number format."""
         if v is None:
             return v
-        # Remove spaces but preserve hyphens for formatting
         v = v.replace(" ", "")
-        # Validate format: +X-XXX-XXX-XXXX or +XXXXXXXXXXXX
         if not (re.match(r'^\+\d(-\d{3})*(-\d{4})?$', v) or re.match(r'^\+\d+$', v)):
             raise ValueError('Invalid phone format. Expected: +X-XXX-XXX-XXXX or +XXXXXXXXXXXX')
         return v
