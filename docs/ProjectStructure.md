@@ -5,15 +5,19 @@ AIQLeads/
 ├── src/
 │   ├── __init__.py
 │   ├── main.py
-│   ├── config.py
-│   ├── database.py
+│   ├── config/
+│   │   ├── __init__.py
+│   │   └── settings.py
+│   ├── database/
+│   │   ├── __init__.py
+│   │   └── postgres_manager.py
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── user_model.py
 │   │   ├── lead_model.py
 │   │   ├── transaction_model.py
 │   │   ├── subscription_model.py
-│   │   └── market_insights_model.py
+│   │   └── market_insight_model.py
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── auth_service.py
@@ -87,7 +91,11 @@ AIQLeads/
 
 ## File Naming Conventions
 
-1. All Python files use snake_case
-2. Test files are prefixed with `test_`
-3. Model files are suffixed with `_model.py`
-4. Service files are suffixed with `_service.py`
+1. All Python files use snake_case.
+2. Test files are prefixed with `test_`.
+3. Model files are suffixed with `_model.py`.
+4. Service files are suffixed with `_service.py`.
+
+## Notes
+- Maintain modularity by adhering to directory and naming conventions.
+- Update this structure whenever new features or directories are added to ensure alignment with project growth.
