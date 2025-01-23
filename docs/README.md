@@ -47,6 +47,7 @@ Welcome to the AIQLeads documentation. This directory contains comprehensive doc
 5. Update the changelog after merging
 
 ## Documentation Structure
+
 ```
 docs/
 ├── README.md (this file)
@@ -60,3 +61,7 @@ docs/
     ├── TermsOfService.md
     └── PrivacyPolicy.md
 ```
+
+## Notes
+- Ensure all updates to documentation are consistent with the project structure and implementation state.
+- Use clear and concise language to maximize accessibility for contributors.
