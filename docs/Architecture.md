@@ -25,7 +25,7 @@ AIQLeads uses a **modular, service-oriented approach** within a single repositor
 ## 2. Data Flow
 
 ```mermaid
-flowchart LR
+graph LR
     A[Scrapers] --> B[AI Data Cleaning & Fraud Detection]
     B --> C[PostgreSQL + PostGIS]
     C --> D[Elasticsearch] 
@@ -75,3 +75,4 @@ flowchart LR
    - Strengthen security for API endpoints and sensitive user data.
 
 ---
+
