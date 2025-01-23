@@ -1,216 +1,198 @@
-AIQLeads MVP Implementation Tracker
+# AIQLeads MVP Implementation Roadmap
 
-Current Status
+## Current Status
 
-Completion Overview
+AIQLeads is currently ~50% complete. This roadmap outlines the steps required to fully implement the MVP, including a phase-by-phase breakdown and specific file updates/additions. By following this plan, AIQLeads will evolve into a robust real estate lead marketplace with advanced AI, geospatial analytics, dynamic pricing, and more.
 
-Phase	Description	Status
-Phase 0	Scope Definition & Repo Setup	Completed
-Phase 1	Aggregator & Data Ingestion	In Progress (~50%)
-Phase 2	Search & Advanced Filtering	Not Started
-Phase 3	AI Data Cleaning & Fraud Detection	Not Started
-Phase 4	Dynamic Pricing Engine	Not Started
-Phase 5	AI Recommendations	Not Started
-Phase 6	Cart Management Enhancements	Not Started
-Phase 7	Advanced Analytics & Market Insights	Partially Completed
-Phase 8	Payment Gateway Enhancements	Partially Completed
-Phase 9	Monitoring & Alerts	Not Started
-Phase 10	API Gateway, Rate Limiting & Security	Not Started
-Phase 11	Final Testing, Documentation & Deployment	Not Started
+## Current File Structure
 
-Overall Progress: ~50% Complete
+```
+AIQLeads/
+├── .github/
+│   ├── scripts/
+│   │   └── update_files.py         # GitHub automation scripts
+│   └── workflows/
+│       ├── ci.yml                  # Continuous Integration workflow
+│       ├── cd.yml                  # Continuous Deployment workflow
+│       └── file-ops.yml            # File Operations workflow
+├── src/
+│   ├── config/
+│   │   ├── __init__.py
+│   │   └── settings.py             # Environment configuration and logging
+│   ├── database/
+│   │   ├── __init__.py
+│   │   └── postgres_manager.py     # Connection pooling and session management
+│   ├── models/
+│   │   ├── user_model.py           # User model with password policy
+│   │   ├── lead_model.py           # Lead model with geospatial features
+│   │   ├── transaction_model.py    # Transaction model with financial validation
+│   │   └── subscription_model.py   # Subscription management with billing cycles
+│   └── schemas/
+│       ├── user_schema.py          # User request/response validation
+│       ├── lead_schema.py          # Lead request/response validation
+│       ├── transaction_schema.py   # Transaction request/response validation
+│       └── subscription_schema.py  # Subscription request/response validation
+└── tests/
+    ├── database/
+    │   └── test_postgres_manager.py
+    ├── models/
+    │   ├── test_user_model.py
+    │   ├── test_lead_model.py
+    │   ├── test_transaction_model.py
+    │   └── test_subscription_model.py
+    ├── scripts/
+    │   ├── __init__.py
+    │   └── test_update_files.py    # Tests for GitHub automation scripts
+    └── workflows/
+        ├── __init__.py
+        ├── conftest.py             # Shared test fixtures
+        ├── test_ci_workflow.py     # CI workflow tests
+        └── test_cd_workflow.py     # CD workflow tests
+```
 
-File-by-File Roadmap
+---
 
-Phase 1: Expand the Aggregator & Data Ingestion
+## Implementation Phases
 
-Progress: ~50%
-	1.	Scraper Updates
-	•	Completed:
-	•	Zillow, Craigslist, FSBO scrapers are functional.
-	•	Parsers for raw HTML/JSON responses partially implemented.
-	•	Pending:
-	•	Add new scrapers:
-	•	linkedin_scraper.py: Scrape LinkedIn groups.
-	•	facebook_scraper.py: Scrape Facebook Marketplace.
-	•	Files to Update:
-	•	src/aggregator/scrapers/*
-	•	src/aggregator/parsers/*
-	•	src/aggregator/scraper_utils.py
-	2.	Pipeline Integration
-	•	Completed:
-	•	Basic aggregator pipeline processes leads into PostgreSQL.
-	•	Pending:
-	•	Integrate LinkedIn and Facebook scrapers into the pipeline.
-	•	Add exception handling for scraping anomalies.
-	•	Files to Update:
-	•	src/aggregator/pipeline.py
-	•	src/aggregator/exceptions.py
-	3.	Testing
-	•	Mock scraping responses to verify pipeline consistency.
-	•	Add unit tests for new scrapers/parsers.
-	•	Files to Update:
-	•	tests/integration/test_aggregator_pipeline.py
+### PHASE 1: Expand the Aggregator & Data Ingestion
 
-Phase 2: Search & Advanced Filtering
+#### Tasks
 
-Progress: Not Started
-	1.	Search Manager
-	•	Pending:
-	•	Implement indexing for leads in Elasticsearch/OpenSearch.
-	•	Enable geo-based and text-based queries.
-	•	Files to Create/Update:
-	•	src/database/search_manager.py
-	•	Add Elasticsearch setup to docker-compose.yml and src/config/settings.py.
-	2.	Advanced Filtering
-	•	Pending:
-	•	API for full-text search and advanced filters.
-	•	Add radius-based filtering using PostGIS or ES.
-	•	Files to Update:
-	•	src/controllers/lead_marketplace_controller.py
-	•	src/services/lead_marketplace_service.py
-	3.	Testing
-	•	Pending:
-	•	Integration tests for full-text search, filters, and radius queries.
-	•	Files to Add:
-	•	tests/integration/test_search_manager.py
+1. **Add New Scrapers**
+   - `src/aggregator/scrapers/linkedin_scraper.py`
+   - `src/aggregator/scrapers/facebook_scraper.py`
+   - Refine `src/aggregator/scraper_utils.py` with proxy rotation and error handling.
+   - Create parsers for new scrapers:
+     - `src/aggregator/parsers/linkedin_parser.py`
+     - `src/aggregator/parsers/facebook_parser.py`
+2. **Integrate New Scrapers**
+   - Update `src/aggregator/pipeline.py` to include LinkedIn and Facebook scrapers.
+   - Implement scheduling for regular scraper runs.
+3. **Testing**
+   - Add integration tests in `tests/integration/test_aggregator_pipeline.py`.
 
-Phase 3: AI Data Cleaning & Fraud Detection
+---
 
-Progress: Not Started
-	1.	LangChain Integration
-	•	Pending:
-	•	Normalize and clean lead fields using LangChain + OpenAI.
-	•	Add a fallback mechanism for incomplete leads.
-	•	Files to Create/Update:
-	•	src/services/lead_validation_service.py
-	•	Integrate into src/aggregator/pipeline.py.
-	2.	Fraud Detection
-	•	Pending:
-	•	Heuristics/AI for detecting duplicate or fraudulent leads.
-	•	Add fraud_score and validation logic to lead_model.py.
-	•	Files to Update:
-	•	src/models/lead_model.py
-	3.	Testing
-	•	Mock validation results and verify fraud detection thresholds.
-	•	Files to Add:
-	•	tests/unit/test_lead_validation_service.py
+### PHASE 2: Search & Advanced Filtering
 
-Phase 4: Dynamic Pricing Engine
+#### Tasks
 
-Progress: Not Started
-	1.	Pricing Logic
-	•	Pending:
-	•	Implement dynamic price adjustments based on demand, quality score, and user tiers.
-	•	Files to Create/Update:
-	•	src/services/dynamic_pricing_service.py
-	2.	Integration
-	•	Pending:
-	•	Periodic price recalculation in pipeline.
-	•	Subscription tier discounts.
-	•	Files to Update:
-	•	src/models/transaction_model.py
-	•	src/controllers/dynamic_pricing_controller.py
-	3.	Testing
-	•	Verify price calculations and database updates.
-	•	Files to Add:
-	•	tests/unit/test_dynamic_pricing_service.py
+1. **Search Manager**
+   - Add `src/database/search_manager.py` for Elasticsearch/OpenSearch integration.
+   - Implement lead indexing and updates for dynamic search results.
+2. **Advanced Filtering**
+   - Update `src/services/lead_marketplace_service.py` to enable text, filter-based, and geospatial searches.
+   - Add new endpoints in `src/controllers/lead_marketplace_controller.py`.
+3. **Testing**
+   - Create `tests/integration/test_search_manager.py` and `tests/e2e/test_lead_search.py`.
 
-Phase 5: AI Recommendations
+---
 
-Progress: Not Started
-	1.	Embedding Generation
-	•	Pending:
-	•	Use OpenAI/Pinecone for user and lead embeddings.
-	•	Files to Update:
-	•	src/services/ai_pipeline_manager.py
-	•	docker-compose.yml for Pinecone/Weaviate.
-	2.	Recommendation API
-	•	Pending:
-	•	Serve recommended leads based on user profiles and embeddings.
-	•	Files to Update:
-	•	src/controllers/ai_recommendations_controller.py
-	•	src/services/ai_recommendations_service.py
-	3.	Testing
-	•	Test embedding quality and recommendation accuracy.
-	•	Files to Add:
-	•	tests/integration/test_ai_recommendations_service.py
+### PHASE 3: AI Data Cleaning & Fraud Detection
 
-Phase 6: Cart Management Enhancements
+#### Tasks
 
-Progress: Not Started
-	1.	Timers & Holds
-	•	Pending:
-	•	Add per-item timers, premium hold logic for carts.
-	•	Files to Update:
-	•	src/services/cart_management_service.py
-	2.	Notifications
-	•	Pending:
-	•	Notify users about cart expirations.
-	•	Files to Update:
-	•	src/controllers/cart_management_controller.py
-	3.	Testing
-	•	Verify timers, extensions, and notifications.
-	•	Files to Add:
-	•	tests/unit/test_cart_management_service.py
+1. **LangChain Integration**
+   - Implement `src/services/lead_validation_service.py` to normalize scraped data.
+   - Integrate data cleaning pipeline into `src/aggregator/pipeline.py`.
+2. **Fraud Detection**
+   - Add fraud scoring to `src/models/lead_model.py`.
+   - Enhance validation service to detect duplicate or suspicious leads.
+3. **Testing**
+   - Add `tests/unit/test_lead_validation_service.py` for fraud detection and data cleaning logic.
 
-Phase 7: Advanced Analytics & Market Insights
+---
 
-Progress: ~30%
-	1.	Market Insights API
-	•	Completed:
-	•	Basic market_insight_model.py for storing regional analytics.
-	•	Pending:
-	•	API endpoints for trend and demand analysis.
-	•	Files to Update:
-	•	src/controllers/market_insights_controller.py
-	•	src/services/analytics_service.py
-	2.	Testing
-	•	Pending:
-	•	Validate aggregated data accuracy.
-	•	Files to Add:
-	•	tests/unit/test_analytics_service.py
+### PHASE 4: Dynamic Pricing Engine
 
-Phase 8: Payment Gateway Enhancements
+#### Tasks
 
-Progress: Partially Completed
-	1.	Subscription Renewals
-	•	Pending:
-	•	Automate subscription renewals with Stripe/PayPal.
-	•	Files to Update:
-	•	src/services/subscription_service.py
-	2.	Refunds
-	•	Pending:
-	•	Add refund logic for invalid leads.
-	•	Files to Update:
-	•	src/services/payment_service.py
+1. **Dynamic Pricing Service**
+   - Create `src/services/dynamic_pricing_service.py` to calculate real-time lead prices.
+   - Update `src/models/transaction_model.py` to track final sale prices.
+2. **Testing**
+   - Add unit tests in `tests/unit/test_dynamic_pricing_service.py`.
+   - Verify real-time price updates in `tests/integration/test_pricing_logic.py`.
 
-Phase 9: Monitoring & Alerts
+---
 
-Progress: Not Started
-	1.	Prometheus/Grafana Dashboards
-	•	Pending:
-	•	Track scraper health, API performance, and lead conversion metrics.
-	•	Files to Add:
-	•	src/monitoring/metrics_service.py
-	2.	Alerting
-	•	Pending:
-	•	Integrate Slack or PagerDuty for real-time alerts.
-	•	Files to Add:
-	•	src/monitoring/alerts_service.py
+### PHASE 5: AI Recommendations
 
-Phase 10: API Gateway, Rate Limiting & Security
+#### Tasks
 
-Progress: Not Started
-	1.	Rate Limiting
-	•	Pending:
-	•	Implement Redis-based or external rate limiting.
-	•	Files to Add:
-	•	src/gateway/rate_limiting.py
+1. **Embedding-Based Suggestions**
+   - Configure Pinecone/Weaviate in `docker-compose.yml` or `.env`.
+   - Generate embeddings in `src/services/ai_pipeline_manager.py`.
+2. **Recommendation Service**
+   - Add `src/services/ai_recommendations_service.py`.
+   - Expose recommendations via `src/controllers/ai_recommendations_controller.py`.
+3. **Testing**
+   - Create `tests/integration/test_ai_recommendations_service.py`.
 
-Next Steps
-	1.	Complete Phase 1 (Aggregator).
-	2.	Begin Phase 2 (Search).
-	3.	Implement Phase 3 (AI Data Cleaning).
+---
 
-This structure keeps progress and roadmap updates organized, ensuring actionable tasks for each phase.
+### PHASE 6: Finalize Cart Management
+
+#### Tasks
+
+1. **Per-Item Timers**
+   - Update `src/services/cart_management_service.py` to track individual lead timers.
+   - Add premium hold logic for Pro and Enterprise users.
+2. **Testing**
+   - Write tests in `tests/unit/test_cart_management_service.py`.
+
+---
+
+### PHASE 7: Market Insights & Analytics
+
+#### Tasks
+
+1. **Market Insights API**
+   - Implement `src/services/analytics_service.py` for regional trends and data aggregation.
+   - Create API endpoints in `src/controllers/market_insights_controller.py`.
+2. **Testing**
+   - Add unit tests in `tests/unit/test_analytics_service.py`.
+
+---
+
+### PHASE 8: Monitoring & Alerts
+
+#### Tasks
+
+1. **Metrics Collection**
+   - Add Prometheus metrics in `src/monitoring/metrics_service.py`.
+   - Create Grafana dashboards for key metrics (API performance, cart conversions).
+2. **Alerting**
+   - Add Slack/PagerDuty integration in `src/monitoring/alerts_service.py`.
+
+---
+
+### PHASE 9: Documentation & Deployment
+
+#### Tasks
+
+1. **Update Docs**
+   - Revise `docs/Architecture.md`, `docs/MVP_Overview.md`, and OpenAPI specs.
+   - Finalize deployment instructions in `docs/Usage.md`.
+2. **Staging & Production Deployment**
+   - Ensure CI/CD pipelines deploy stable builds to production.
+
+---
+
+## Progress Metrics
+
+### Phase Completion
+
+| Phase | Description                 | Completion |
+|-------|-----------------------------|------------|
+| 1     | Aggregator Expansion        | **50%**    |
+| 2     | Search Integration          | **30%**    |
+| 3     | AI Cleaning & Fraud Detection| **20%**    |
+| 4     | Dynamic Pricing Engine      | **15%**    |
+| 5     | AI Recommendations          | **10%**    |
+| 6     | Cart Management             | **10%**    |
+| 7     | Market Insights & Analytics | **5%**     |
+| 8     | Monitoring & Alerts         | **0%**     |
+| 9     | Documentation & Deployment  | **0%**     |
+
+### Overall Project Completion: **45%**
