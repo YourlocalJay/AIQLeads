@@ -1,8 +1,3 @@
----
-
-## **MarketInsights.md**
-
-```markdown
 # AIQLeads: Market Insights
 
 AIQLeads initially targets **Las Vegas**, **Dallas/Ft. Worth**, **Austin**, and **Phoenix**, each with unique real estate dynamics. Below are market-specific insights guiding scraper logic, fraud detection, and dynamic pricing.
@@ -79,7 +74,7 @@ AIQLeads initially targets **Las Vegas**, **Dallas/Ft. Worth**, **Austin**, and 
    - Each region has unique red flags:  
      - Las Vegas: Overlapping event rentals.  
      - DFW: Rapid listing turnover.  
-     - Austin: Tech job relocation “phantom” listings.  
+     - Austin: Tech job relocation "phantom" listings.  
      - Phoenix: Seasonal churn of short-term rentals.
 
 2. **Regional AI Embeddings**  
