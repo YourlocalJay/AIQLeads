@@ -61,9 +61,9 @@ AIQLeads is an AI-driven lead marketplace designed to streamline real estate lea
 
 ## 4. Future Enhancements
 
-- **Enterprise Integrations**: Sync leads with CRMs or marketing platforms.  
-- **More Markets**: Expand beyond the initial four cities using the modular scraper architecture.  
-- **Reinforcement Learning**: Continually refine pricing models based on purchase outcomes.  
-- **User Behavior Analytics**: Track detailed user interactions for deeper personalization and ad targeting.
+1. **Enterprise Integrations**: Sync leads with CRMs or marketing platforms.  
+2. **More Markets**: Expand beyond the initial four cities using the modular scraper architecture.  
+3. **Reinforcement Learning**: Continually refine pricing models based on purchase outcomes.  
+4. **User Behavior Analytics**: Track detailed user interactions for deeper personalization and ad targeting.
 
 ---
