@@ -1,11 +1,20 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict
-from src.api.middleware.health_check import HealthCheck
+from datetime import datetime
+from src.config.settings import get_settings
+from src.services.health_service import HealthService
 
-router = APIRouter()
+router = APIRouter(prefix='/health', tags=['Health'])
+settings = get_settings()
 
-@router.get('/health')
-async def health_check() -> Dict:
-    """Get system health status"""
-    health_check = HealthCheck()
-    return await health_check.get_health_status()
+@router.get('/')
+async def check_health() -> Dict:
+    """Check health status of all system components"""
+    health_service = HealthService()
+    return await health_service.check_all_services()
+
+@router.get('/detailed')
+async def detailed_health() -> Dict:
+    """Get detailed health metrics for all services"""
+    health_service = HealthService()
+    return await health_service.get_detailed_status()
