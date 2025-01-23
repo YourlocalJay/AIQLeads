@@ -2,22 +2,22 @@
 
 ## 1. High-Level Design
 
-AIQLeads uses a **modular, service-oriented approach** within a single repository, allowing each major feature to be developed and tested independently. 
+AIQLeads uses a **modular, service-oriented approach** within a single repository, allowing each major feature to be developed and tested independently.
 
 ### Key Components
-1. **Data Aggregation (Scrapers & Parsers)**  
-   - Pulls leads from multiple sources (Zillow, Craigslist, Facebook, FSBO, LinkedIn).  
+1. **Data Aggregation (Scrapers & Parsers)**
+   - Pulls leads from multiple sources (Zillow, Craigslist, Facebook, FSBO, LinkedIn).
    - Region-specific scrapers for Las Vegas, Dallas/Ft. Worth, Austin, Phoenix.
-2. **AI Services**  
+2. **AI Services**
    - Data cleaning, fraud detection, dynamic pricing, and lead recommendations using LLMs and vector databases.
-3. **Core Services**  
-   - **Cart Management**, **Credit System**, **Subscription Tiers**, and **Market Insights**.  
-4. **Storage & Search**  
-   - **PostgreSQL** with **PostGIS** for geospatial queries.  
-   - **Redis** for in-memory caching and cart timers.  
+3. **Core Services**
+   - **Cart Management**, **Credit System**, **Subscription Tiers**, and **Market Insights**.
+4. **Storage & Search**
+   - **PostgreSQL** with **PostGIS** for geospatial queries.
+   - **Redis** for in-memory caching and cart timers.
    - **Elasticsearch** (or OpenSearch) for advanced text/faceted search.
-5. **Monitoring & Alerts**  
-   - **Prometheus/Grafana** for metrics.  
+5. **Monitoring & Alerts**
+   - **Prometheus/Grafana** for metrics.
    - **alerts_service.py** for notifications on scraper downtime or system errors.
 
 ---
@@ -37,3 +37,41 @@ flowchart LR
     E --> I[Cart & Payment Flows]
     I --> J[Credit System Service]
     E --> K[Monitoring & Alerts]
+```
+
+---
+
+## 3. Key Design Principles
+
+1. **Scalability**:
+   - Modular scrapers allow easy addition of new regions.
+   - AI-powered services scale independently to handle increasing leads and user traffic.
+
+2. **Performance**:
+   - Redis ensures low-latency caching for cart timers and frequently accessed data.
+   - PostgreSQL with PostGIS optimizes geospatial queries for location-based recommendations.
+
+3. **Data Integrity**:
+   - Fraud detection ensures data quality.
+   - Real-time validation of user inputs and lead purchases prevents inconsistencies.
+
+4. **Monitoring**:
+   - Alerts and dashboards track system health, ensuring quick responses to issues.
+
+---
+
+## 4. Future Enhancements
+
+1. **Expanded Scraping**:
+   - Add international markets with new scraper modules.
+
+2. **Enhanced Recommendations**:
+   - Integrate reinforcement learning to refine recommendation algorithms based on user interactions.
+
+3. **Real-Time Analytics**:
+   - Develop real-time dashboards for agents to visualize market trends and lead performance.
+
+4. **System Hardening**:
+   - Strengthen security for API endpoints and sensitive user data.
+
+---
