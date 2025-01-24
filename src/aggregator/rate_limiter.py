@@ -31,6 +31,7 @@ class RateLimiter:
         self.last_update = datetime.utcnow()
         self.next_reset = self.last_update + timedelta(seconds=window_size)
         self._lock = asyncio.Lock()
+        self._replenishment_task = None
     
     @property
     def remaining_tokens(self) -> int:
@@ -46,14 +47,18 @@ class RateLimiter:
     def _replenish_tokens(self) -> None:
         """Replenish tokens based on elapsed time."""
         now = datetime.utcnow()
+        if now >= self.next_reset:
+            self.tokens = self.rate_limit
+            self.last_update = now
+            self.next_reset = now + timedelta(seconds=self.window_size)
+            return
+        
         elapsed_time = (now - self.last_update).total_seconds()
         tokens_to_add = int((elapsed_time / self.window_size) * self.rate_limit)
         
         if tokens_to_add > 0:
             self.tokens = min(self.rate_limit, self.tokens + tokens_to_add)
             self.last_update = now
-            if self.tokens == self.rate_limit:
-                self.next_reset = now + timedelta(seconds=self.window_size)
     
     async def acquire(self, tokens: int = 1, wait: bool = True) -> None:
         """Acquire tokens for an operation.
@@ -63,10 +68,11 @@ class RateLimiter:
             wait (bool): Whether to wait for tokens to become available
             
         Raises:
+            ValueError: If tokens <= 0
             RateLimitExceeded: If tokens unavailable and wait=False
         """
         if tokens <= 0:
-            raise ValueError("Requested tokens must be a positive integer")
+            raise ValueError("Requested tokens must be positive")
         
         async with self._lock:
             self._replenish_tokens()
@@ -97,9 +103,12 @@ class RateLimiter:
             
         Returns:
             bool: True if tokens are available, False otherwise
+            
+        Raises:
+            ValueError: If tokens <= 0
         """
         if tokens <= 0:
-            raise ValueError("Requested tokens must be a positive integer")
+            raise ValueError("Requested tokens must be positive")
         
         async with self._lock:
             self._replenish_tokens()
@@ -109,7 +118,7 @@ class RateLimiter:
         """Get detailed rate limiter status.
         
         Returns:
-            dict: Current rate limit status
+            dict: Current rate limit status including metrics
         """
         async with self._lock:
             self._replenish_tokens()
@@ -119,4 +128,5 @@ class RateLimiter:
                 "window_size": self.window_size,
                 "usage_percentage": self.usage_percentage,
                 "next_reset": self.next_reset.isoformat(),
+                "last_update": self.last_update.isoformat()
             }

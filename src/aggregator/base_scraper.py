@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from src.aggregator.rate_limiter import RateLimiter
-from src.aggregator.exceptions import ScraperError
+from src.aggregator.exceptions import ScraperError, NetworkError
 from src.schemas.lead_schema import LeadCreate
 
 
@@ -23,6 +23,26 @@ class BaseScraper(ABC):
         self.rate_limiter = RateLimiter(rate_limit, time_window)
         self.errors: List[Dict[str, Any]] = []
         self.last_scrape: Optional[datetime] = None
+        self._session = None  # HTTP session placeholder for implementations
+    
+    async def __aenter__(self):
+        """Async context manager entry."""
+        await self.initialize()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.cleanup()
+    
+    async def initialize(self) -> None:
+        """Initialize scraper resources (e.g., HTTP session)."""
+        pass
+    
+    async def cleanup(self) -> None:
+        """Clean up resources (e.g., close HTTP session)."""
+        if self._session:
+            await self._session.close()
+            self._session = None
     
     @abstractmethod
     async def search(self, location: str, radius_km: float = 50.0, **kwargs) -> List[LeadCreate]:
@@ -38,6 +58,7 @@ class BaseScraper(ABC):
             
         Raises:
             ScraperError: If scraping fails or rate limit is exceeded
+            NetworkError: If network request fails
         """
         pass
     
@@ -65,8 +86,6 @@ class BaseScraper(ABC):
             'data': data or {}
         }
         self.errors.append(error_entry)
-        # Log the error (e.g., to Sentry or monitoring service)
-        # logger.error(f"Scraper error: {error_entry}")
     
     async def get_rate_limit_status(self) -> Dict[str, Any]:
         """Get current rate limit status.
@@ -74,11 +93,7 @@ class BaseScraper(ABC):
         Returns:
             Dict containing current rate limit metrics
         """
-        return {
-            'remaining_requests': self.rate_limiter.remaining_tokens,
-            'reset_time': self.rate_limiter.next_reset,
-            'window_size': self.rate_limiter.window_size
-        }
+        return await self.rate_limiter.get_status()
     
     def clear_errors(self) -> None:
         """Clear error history."""
@@ -93,6 +108,9 @@ class BaseScraper(ABC):
             
         Returns:
             Dict[str, Any]: Normalized contact information
+            
+        Raises:
+            ParseError: If contact information extraction fails
         """
         pass
 
@@ -102,9 +120,12 @@ class BaseScraper(ABC):
         Returns:
             bool: True if rate limit is exceeded, False otherwise
         """
-        return not self.rate_limiter.has_tokens
+        return not await self.rate_limiter.check_rate_limit()
 
-    async def log_scrape_activity(self) -> None:
-        """Log scraper activity after a scrape operation."""
+    async def log_scrape_activity(self, leads_found: int) -> None:
+        """Log scraper activity after a scrape operation.
+        
+        Args:
+            leads_found (int): Number of leads discovered in the scrape
+        """
         self.last_scrape = datetime.utcnow()
-        # logger.info(f"Scrape completed at {self.last_scrape.isoformat()}")  # Example log entry
