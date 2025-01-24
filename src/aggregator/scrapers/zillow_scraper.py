@@ -2,26 +2,24 @@ import aiohttp
 import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from urllib.parse import urlencode
 from bs4 import BeautifulSoup
 
 from src.aggregator.base_scraper import BaseScraper
 from src.schemas.lead_schema import LeadCreate, CoordinatePoint
 from src.aggregator.exceptions import NetworkError, ParseError, LocationError
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ZillowScraper(BaseScraper):
-    """Scraper implementation for Zillow real estate listings.
-    
-    Handles FSBO (For Sale By Owner) and agent listings with contact information
-    extraction and geolocation support.
-    """
+    """Scraper implementation for Zillow real estate listings."""
     
     BASE_URL = "https://www.zillow.com/graphql"
     SEARCH_OPERATION = "FullRenderQuery"
     
     def __init__(self, api_key: Optional[str] = None):
         """Initialize Zillow scraper with optional API credentials."""
-        super().__init__(rate_limit=100, time_window=60)  # Zillow's standard rate limit
+        super().__init__(rate_limit=100, time_window=60)
         self.api_key = api_key
         self._session = None
     
@@ -37,6 +35,7 @@ class ZillowScraper(BaseScraper):
     async def search(self, location: str, radius_km: float = 50.0, **kwargs) -> List[LeadCreate]:
         """Search for FSBO and agent listings in the specified location."""
         try:
+            logger.info(f"Starting Zillow search for location: {location}, radius: {radius_km} km")
             await self.rate_limiter.acquire()
             
             variables = {
@@ -64,8 +63,10 @@ class ZillowScraper(BaseScraper):
                 return await self._parse_listings(data)
                 
         except aiohttp.ClientError as e:
+            logger.error(f"Network error during Zillow scraping: {e}")
             raise NetworkError(f"Failed to connect to Zillow: {str(e)}")
         except Exception as e:
+            logger.error(f"Error processing Zillow response: {e}")
             raise ParseError(f"Failed to process Zillow response: {str(e)}")
     
     async def extract_contact_info(self, listing_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -97,9 +98,13 @@ class ZillowScraper(BaseScraper):
                     'email': owner_data.get('email')
                 })
             
+            if not contact_info['phone'] and not contact_info['email']:
+                raise ParseError("Contact information is incomplete.")
+            
             return contact_info
             
         except Exception as e:
+            logger.error(f"Failed to extract contact info: {e}")
             raise ParseError(f"Failed to extract contact info: {str(e)}")
     
     def _build_filters(self, **kwargs) -> Dict[str, Any]:
@@ -113,7 +118,6 @@ class ZillowScraper(BaseScraper):
                 'max': kwargs.get('price_max')
             }
         }
-        
         # Remove None values
         return {k: v for k, v in filters.items() if v is not None}
     
