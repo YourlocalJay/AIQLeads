@@ -54,9 +54,8 @@ class LinkedInScraper(BaseScraper):
             bool: True if credentials are valid, False otherwise.
         """
         try:
-            # Simulated credential validation
             logger.info("Validating LinkedIn credentials.")
-            return True
+            return True  # Simulated validation for MVP purposes
         except Exception as e:
             logger.error("LinkedIn credential validation failed.")
             raise ScraperError("Invalid LinkedIn credentials.")
