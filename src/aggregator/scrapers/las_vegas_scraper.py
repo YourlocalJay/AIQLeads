@@ -9,43 +9,50 @@ import logging
 logger = logging.getLogger(__name__)
 
 class LasVegasScraper(BaseScraper):
-    """Scraper for extracting real estate leads from Las Vegas-specific platforms."""
+    """Scraper for extracting real estate leads from Las Vegas and surrounding areas."""
     
     BASE_URL = "https://www.lasvegasrealestate.com/api/v1/properties"
-    
+    SUBREGIONS = ["Henderson", "Summerlin", "North Las Vegas", "Enterprise"]
+
     def __init__(self, rate_limit: int = 50, time_window: int = 60):
         super().__init__(rate_limit, time_window)
     
-    async def search(self, location: str, radius_km: float = 50.0, **kwargs) -> List[LeadCreate]:
+    async def search(self, location: str = "Las Vegas", radius_km: float = 50.0, include_subregions: bool = True, **kwargs) -> List[LeadCreate]:
         """
-        Search for properties in Las Vegas.
+        Search for properties in Las Vegas and optional surrounding areas.
 
         Args:
-            location (str): Target location (city, state, or postal code).
+            location (str): Central target location (default: "Las Vegas").
             radius_km (float): Search radius in kilometers.
+            include_subregions (bool): Whether to include predefined subregions.
             **kwargs: Additional search parameters.
 
         Returns:
             List[LeadCreate]: A list of leads extracted and validated.
-
-        Raises:
-            ScraperError: If scraping fails or rate limit is exceeded.
         """
         try:
             logger.info(f"Starting Las Vegas search for location: {location}, radius: {radius_km} km")
             await self.rate_limiter.acquire()
+
+            # Gather listings for the main location and subregions
+            locations_to_search = [location]
+            if include_subregions:
+                locations_to_search.extend(self.SUBREGIONS)
             
-            # Simulate API call
-            raw_listings = await self._mock_api_call(location, radius_km)
+            all_leads = []
+            for loc in locations_to_search:
+                logger.info(f"Searching location: {loc}")
+                raw_listings = await self._mock_api_call(loc, radius_km)
+                leads = [self._parse_listing(listing) for listing in raw_listings]
+                all_leads.extend(leads)
+                logger.info(f"Extracted {len(leads)} leads from {loc}.")
             
-            # Parse and validate leads
-            leads = [self._parse_listing(listing) for listing in raw_listings]
-            logger.info(f"Successfully extracted {len(leads)} leads from Las Vegas scraper.")
-            return leads
+            logger.info(f"Total leads extracted: {len(all_leads)}")
+            return all_leads
         except Exception as e:
             self.add_error("search_error", str(e))
-            logger.error(f"Las Vegas scraping failed: {e}")
-            raise ScraperError("Las Vegas scraping failed.")
+            logger.error(f"Las Vegas scraper failed: {e}")
+            raise ScraperError("Las Vegas scraper failed.")
     
     async def validate_credentials(self) -> bool:
         """
