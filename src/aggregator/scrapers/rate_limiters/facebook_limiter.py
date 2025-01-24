@@ -7,11 +7,11 @@ from .base_limiter import BaseRateLimiter
 
 logger = logging.getLogger(__name__)
 
-class CraigslistRateLimiter(BaseRateLimiter):
+class FacebookRateLimiter(BaseRateLimiter):
     def __init__(self):
         super().__init__(
-            requests_per_minute=30,
-            burst_limit=5
+            requests_per_minute=60,
+            burst_limit=10
         )
         
     async def acquire(self, endpoint: str, max_retries: int = 3, retry_delay: float = 1.0) -> bool:
