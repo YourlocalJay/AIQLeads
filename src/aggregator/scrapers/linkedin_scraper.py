@@ -1,6 +1,6 @@
 from src.aggregator.base_scraper import BaseScraper
 from src.schemas.lead_schema import LeadCreate
-from src.aggregator.exceptions import ScraperError, NetworkError, ParseError
+from src.aggregator.exceptions import ScraperError, ParseError
 from src.aggregator.rate_limiter import RateLimiter
 from typing import List, Dict
 import asyncio
@@ -16,17 +16,30 @@ class LinkedInScraper(BaseScraper):
         self.session_token = None  # Placeholder for LinkedIn session management
 
     async def search(self, location: str, radius_km: float = 50.0, **kwargs) -> List[LeadCreate]:
-        """Search for leads on LinkedIn."""
+        """
+        Search for leads on LinkedIn.
+
+        Args:
+            location (str): Target location (city, state, or postal code).
+            radius_km (float): Search radius in kilometers.
+            **kwargs: Additional search parameters.
+
+        Returns:
+            List[LeadCreate]: A list of leads extracted and validated.
+
+        Raises:
+            ScraperError: If scraping fails or rate limit is exceeded.
+        """
         try:
-            logger.info(f"Starting search for location: {location}, radius: {radius_km} km")
-            await self.rate_limiter.acquire()  # Apply rate limiting
-            
-            # Simulated API call and response
+            logger.info(f"Starting LinkedIn search for location: {location}, radius: {radius_km} km")
+            await self.rate_limiter.acquire()  # Enforce rate limiting
+
+            # Simulate API call and response
             raw_listings = await self._mock_api_call(location, radius_km)
 
             # Parse and validate leads
             leads = [self._parse_listing(listing) for listing in raw_listings]
-            logger.info(f"Extracted {len(leads)} leads from LinkedIn.")
+            logger.info(f"Successfully extracted {len(leads)} leads from LinkedIn.")
             return leads
         except Exception as e:
             self.add_error("search_error", str(e))
@@ -34,16 +47,30 @@ class LinkedInScraper(BaseScraper):
             raise ScraperError("LinkedIn scraping failed.")
 
     async def validate_credentials(self) -> bool:
-        """Validate LinkedIn API credentials or session state."""
+        """
+        Validate LinkedIn API credentials or session state.
+
+        Returns:
+            bool: True if credentials are valid, False otherwise.
+        """
         try:
             # Simulated credential validation
+            logger.info("Validating LinkedIn credentials.")
             return True
         except Exception as e:
-            logger.error("Invalid LinkedIn credentials.")
+            logger.error("LinkedIn credential validation failed.")
             raise ScraperError("Invalid LinkedIn credentials.")
 
     async def extract_contact_info(self, listing_data: dict) -> dict:
-        """Extract contact information from LinkedIn listing data."""
+        """
+        Extract contact information from LinkedIn listing data.
+
+        Args:
+            listing_data (dict): Raw data from LinkedIn.
+
+        Returns:
+            dict: Extracted contact information.
+        """
         try:
             contact_info = {
                 "name": listing_data.get("name", "N/A"),
@@ -59,7 +86,16 @@ class LinkedInScraper(BaseScraper):
             raise ScraperError("Failed to extract contact info.")
 
     async def _mock_api_call(self, location: str, radius_km: float) -> List[dict]:
-        """Mock API call to simulate LinkedIn scraping."""
+        """
+        Mock API call to simulate LinkedIn scraping.
+
+        Args:
+            location (str): Target location.
+            radius_km (float): Search radius in kilometers.
+
+        Returns:
+            List[dict]: Simulated raw listing data.
+        """
         await asyncio.sleep(1)  # Simulate network delay
         return [
             {"name": "John Doe", "email": "john.doe@example.com", "phone": "+1234567890"},
@@ -67,7 +103,15 @@ class LinkedInScraper(BaseScraper):
         ]
 
     def _parse_listing(self, listing: dict) -> LeadCreate:
-        """Parse raw listing into LeadCreate schema."""
+        """
+        Parse raw listing into LeadCreate schema.
+
+        Args:
+            listing (dict): Raw listing data.
+
+        Returns:
+            LeadCreate: Validated lead schema.
+        """
         try:
             return LeadCreate(
                 name=listing["name"],
