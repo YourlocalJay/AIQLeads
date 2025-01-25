@@ -2,131 +2,77 @@ from datetime import datetime, timedelta
 from typing import Optional
 import asyncio
 from src.aggregator.exceptions import RateLimitExceeded
+from src.aggregator.scrapers.rate_limiters.base_limiter import BaseRateLimiter
 
-
-class RateLimiter:
+class RateLimiter(BaseRateLimiter):
     """Token bucket rate limiter for API request management.
     
-    Implements a thread-safe token bucket algorithm for rate limiting with
-    support for async/await patterns. Provides automatic token replenishment
-    and window tracking.
+    Extends BaseRateLimiter with:
+    - Token bucket algorithm
+    - Request queueing
+    - Enhanced metrics
     """
     
-    def __init__(self, rate_limit: int, window_size: int):
-        """Initialize rate limiter.
-        
-        Args:
-            rate_limit (int): Maximum number of tokens/requests per window
-            window_size (int): Time window in seconds
-        
-        Raises:
-            ValueError: If rate_limit or window_size is invalid
-        """
-        if rate_limit <= 0 or window_size <= 0:
-            raise ValueError("rate_limit and window_size must be positive integers")
-        
-        self.rate_limit = rate_limit
+    def __init__(
+        self,
+        rate_limit: int,
+        window_size: int,
+        redis_url: Optional[str] = None,
+        max_queue_size: int = 1000
+    ):
+        super().__init__(
+            requests_per_minute=rate_limit,
+            burst_limit=rate_limit,
+            redis_url=redis_url
+        )
         self.window_size = window_size
-        self.tokens = rate_limit
-        self.last_update = datetime.utcnow()
-        self.next_reset = self.last_update + timedelta(seconds=window_size)
-        self._lock = asyncio.Lock()
-        self._replenishment_task = None
+        self._request_queue: asyncio.Queue = asyncio.Queue(maxsize=max_queue_size)
+        self._consumer_task: Optional[asyncio.Task] = None
     
-    @property
-    def remaining_tokens(self) -> int:
-        """Get number of remaining tokens."""
-        self._replenish_tokens()
-        return self.tokens
+    async def initialize(self):
+        await super().initialize()
+        self._consumer_task = asyncio.create_task(self._request_consumer())
     
-    @property
-    def usage_percentage(self) -> float:
-        """Get rate limiter usage as a percentage."""
-        return 100 * (1 - self.tokens / self.rate_limit)
+    async def shutdown(self):
+        if self._consumer_task:
+            self._consumer_task.cancel()
+            try:
+                await self._consumer_task
+            except asyncio.CancelledError:
+                pass
+        await super().shutdown()
     
-    def _replenish_tokens(self) -> None:
-        """Replenish tokens based on elapsed time."""
-        now = datetime.utcnow()
-        if now >= self.next_reset:
-            self.tokens = self.rate_limit
-            self.last_update = now
-            self.next_reset = now + timedelta(seconds=self.window_size)
-            return
-        
-        elapsed_time = (now - self.last_update).total_seconds()
-        tokens_to_add = int((elapsed_time / self.window_size) * self.rate_limit)
-        
-        if tokens_to_add > 0:
-            self.tokens = min(self.rate_limit, self.tokens + tokens_to_add)
-            self.last_update = now
+    async def acquire(self, endpoint: str, tokens: int = 1) -> bool:
+        """Try to acquire tokens, optionally queueing request."""
+        if await super().acquire(endpoint, tokens):
+            return True
+            
+        try:
+            await self._request_queue.put((endpoint, tokens))
+            return True
+        except asyncio.QueueFull:
+            return False
     
-    async def acquire(self, tokens: int = 1, wait: bool = True) -> None:
-        """Acquire tokens for an operation.
-        
-        Args:
-            tokens (int): Number of tokens to acquire
-            wait (bool): Whether to wait for tokens to become available
-            
-        Raises:
-            ValueError: If tokens <= 0
-            RateLimitExceeded: If tokens unavailable and wait=False
-        """
-        if tokens <= 0:
-            raise ValueError("Requested tokens must be positive")
-        
-        async with self._lock:
-            self._replenish_tokens()
-            
-            if self.tokens >= tokens:
-                self.tokens -= tokens
-                return
-            
-            if not wait:
-                raise RateLimitExceeded(
-                    f"Rate limit exceeded. Available: {self.tokens}, "
-                    f"Requested: {tokens}, Next reset: {self.next_reset}"
-                )
-            
-            while self.tokens < tokens:
-                wait_time = (self.next_reset - datetime.utcnow()).total_seconds()
-                if wait_time > 0:
-                    await asyncio.sleep(wait_time)
-                self._replenish_tokens()
-            
-            self.tokens -= tokens
+    async def _request_consumer(self):
+        """Process queued requests."""
+        while True:
+            try:
+                endpoint, tokens = await self._request_queue.get()
+                if await super().acquire(endpoint, tokens):
+                    self._request_queue.task_done()
+                else:
+                    # Re-queue if still can't acquire
+                    await asyncio.sleep(1)
+                    await self._request_queue.put((endpoint, tokens))
+            except Exception as e:
+                self._record_error()
     
-    async def check_rate_limit(self, tokens: int = 1) -> bool:
-        """Check if operation would exceed rate limit.
-        
-        Args:
-            tokens (int): Number of tokens to check
-            
-        Returns:
-            bool: True if tokens are available, False otherwise
-            
-        Raises:
-            ValueError: If tokens <= 0
-        """
-        if tokens <= 0:
-            raise ValueError("Requested tokens must be positive")
-        
-        async with self._lock:
-            self._replenish_tokens()
-            return self.tokens >= tokens
-    
-    async def get_status(self) -> dict:
-        """Get detailed rate limiter status.
-        
-        Returns:
-            dict: Current rate limit status including metrics
-        """
-        async with self._lock:
-            self._replenish_tokens()
-            return {
-                "remaining_tokens": self.tokens,
-                "rate_limit": self.rate_limit,
-                "window_size": self.window_size,
-                "usage_percentage": self.usage_percentage,
-                "next_reset": self.next_reset.isoformat(),
-                "last_update": self.last_update.isoformat()
-            }
+    async def get_enhanced_metrics(self, endpoint: str) -> dict:
+        """Get detailed metrics including queue stats."""
+        base_metrics = await self.get_metrics(endpoint)
+        return {
+            **base_metrics,
+            "window_size": self.window_size,
+            "queue_size": self._request_queue.qsize(),
+            "queue_remaining": self._request_queue.maxsize - self._request_queue.qsize()
+        }
