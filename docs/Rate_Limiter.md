@@ -204,7 +204,7 @@ The circuit breaker is implemented in the `rate_limiter.py` module. It:
    - Introduce a lightweight local cache for frequent token lookups to reduce Redis overhead.
 
 4. **Enhanced Analytics**
-   - Add anomaly detection to flag unusual traffic patterns or abuse.
+   - Add anomaly detection to flag unusual traffic patterns or abuse. 
 
 ---
 
