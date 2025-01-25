@@ -1,154 +1,118 @@
-# AIQLeads: Real Estate Lead Marketplace
+# AIQLeads
 
-AIQLeads is a cutting-edge lead marketplace designed to help real estate professionals efficiently acquire high-quality, region-specific leads. Targeting high-demand regions such as Las Vegas, Austin, Phoenix, and Dallas/Ft. Worth, AIQLeads combines scraping, data validation, geospatial analytics, and credit-based purchasing to provide real estate agents with the tools they need to stay competitive.
-
-## MVP Overview
-The AIQLeads MVP prioritizes automation, scalability, and simplicity while minimizing operational overhead. The platform features:
-
-1. **Lead Marketplace**
-   - Aggregates leads from multiple sources, including Zillow, Craigslist, FSBO.com, and Facebook Marketplace.
-   - Advanced filtering and search capabilities powered by Elasticsearch.
-   - Rule-based dynamic pricing and geospatial search functionality.
-
-2. **Dynamic Pricing**
-   - Pricing adjusts based on lead quality, demand, and region-specific trends.
-   - Rule-based logic replaces ML models in Phase 1 for simplicity.
-
-3. **Credit-Based Purchasing**
-   - Multi-tier subscription system (Basic, Pro, Enterprise).
-   - Real-time credit tracking and transaction history.
-
-4. **AI-Powered Features**
-   - Simplified recommendations based on user behavior and location preferences.
-   - Heuristic fraud detection and data validation.
-
-5. **Monitoring and Alerts**
-   - Real-time rate limiter metrics and failover handling.
-   - Prometheus/Grafana integration for system monitoring.
+**AIQLeads** is an AI-driven real estate lead marketplace designed to provide high-quality, verified leads for real estate professionals. With advanced scraping techniques, geospatial analytics, dynamic pricing, and AI-powered recommendations, AIQLeads makes lead acquisition efficient, data-driven, and scalable.
 
 ---
 
-## Core Features
+## Features
 
-### **Scraping & Data Aggregation**
-- **Sources**: Supports Zillow, Craigslist, Facebook Marketplace, FSBO.com, and LinkedIn.
-- **Pipeline**: Scraped data flows through a centralized pipeline for parsing, validation, and storage.
-- **Rate Limiting**: Built-in rate limiting ensures compliance with source restrictions.
+### 1. **Lead Marketplace**
+- Centralized repository of property listings aggregated from platforms like Zillow, Craigslist, Facebook Marketplace, and LinkedIn.
+- Advanced filtering and search capabilities, including radius-based location searches and keyword-based filtering.
+- Dynamic pricing adjusts lead prices based on demand, quality, and market conditions.
 
-### **Dynamic Pricing System**
-- Rule-based adjustments for lead pricing based on:
-  - Demand (views, cart additions, purchases).
-  - Regional market conditions.
-  - Subscription tier discounts.
+### 2. **AI-Powered Recommendations**
+- Personalized lead suggestions using embeddings and user behavior.
+- Filters suggestions based on budget, location, and user preferences.
 
-### **Credit System & Cart Management**
-- Users purchase leads using credits.
-- Cart timers ensure fairness and encourage timely decisions.
-- Premium users can hold leads longer or purchase cart extensions.
+### 3. **Market Insights**
+- Real-time analytics for regional trends, including median property prices, demand heatmaps, and inventory levels.
+- Geospatial visualizations powered by PostGIS and frontend integrations.
 
-### **Geospatial Analytics**
-- **PostGIS Integration**:
-  - Radius-based and polygon-based lead searches.
-  - Visualize leads on an interactive map (front-end dependent).
+### 4. **Subscription-Based Credits**
+- Multi-tier subscription plans:
+  - **Basic**: Standard pricing and limited cart timers.
+  - **Pro**: Discounted pricing and extended lead hold times.
+  - **Enterprise**: Bulk discounts, API access, and premium insights.
+- Credit system for lead purchases.
 
-### **Fraud Detection & Validation**
-- Heuristic-based methods for:
-  - Duplicate detection (addresses, phone numbers).
-  - Mismatched data identification.
-- LLM-powered data cleaning for standardizing fields.
-
-### **Monitoring & Metrics**
-- Prometheus and Grafana dashboards.
-- Metrics include API response times, scraper success rates, and lead purchase conversions.
-- Alerts for scraper failures, rate-limiting issues, and payment errors.
+### 5. **Fraud Detection and Data Cleaning**
+- AI-powered fraud detection assigns scores to leads based on anomalies and inconsistencies.
+- Automated data cleaning pipelines using LangChain and OpenAI.
 
 ---
 
-## Architecture Overview
-The AIQLeads architecture is built for scalability and modularity:
+## Architecture Highlights
 
-- **Backend**:
-  - FastAPI for API development.
-  - PostgreSQL with PostGIS for relational and geospatial data.
-  - Elasticsearch for advanced search and filtering.
-  - Redis for caching and cart timers.
-- **AI Integration**:
-  - LangChain for data cleaning and basic heuristic recommendations.
-- **Infrastructure**:
-  - Dockerized services.
-  - CI/CD pipelines via GitHub Actions.
-  - Monitoring with Prometheus/Grafana.
+- **Backend:** FastAPI with PostgreSQL + PostGIS, Redis, Elasticsearch/OpenSearch, and optional Pinecone for vector search.
+- **Frontend:** React.js with dynamic charts and maps (optional integration).
+- **Monitoring and Alerts:** Prometheus and Grafana dashboards with Slack/PagerDuty integration.
+- **Scalability:** Containerized infrastructure using Docker and orchestration options with Kubernetes.
 
 ---
 
-## Installation & Setup
+## Getting Started
 
-1. **Clone the Repository**:
+Follow the [Usage Guide](Usage.md) for detailed setup instructions.
+
+### Prerequisites
+- Python 3.10+
+- Docker
+- PostgreSQL with PostGIS enabled
+- Redis
+
+### Basic Setup
+1. Clone the repository:
    ```bash
    git clone https://github.com/YourlocalJay/AIQLeads.git
    cd AIQLeads
    ```
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Set up the environment:
+   ```bash
+   cp .env.example .env
+   # Update .env with database credentials, API keys, etc.
+   ```
+4. Run the application:
+   ```bash
+   docker-compose up --build
+   ```
 
-2. **Setup Environment**:
-   - Install dependencies:
-     ```bash
-     pip install -r requirements.txt
-     ```
-   - Create a `.env` file based on `.env.example`:
-     ```bash
-     cp .env.example .env
-     ```
-   - Configure database and API keys in `.env`.
+---
 
-3. **Run Services**:
-   - Start the application:
-     ```bash
-     docker-compose up --build
-     ```
-   - Access the FastAPI UI at [http://localhost:8000/docs](http://localhost:8000/docs).
+## Repository Structure
 
-4. **Database Migrations**:
-   - Run migrations:
-     ```bash
-     alembic upgrade head
-     ```
+```plaintext
+AIQLeads/
+├── .github/            # CI/CD workflows
+├── docs/               # Documentation files
+├── migrations/         # Database migration scripts
+├── scripts/            # Deployment and utility scripts
+├── src/                # Core application code
+│   ├── aggregator/     # Scrapers, parsers, and pipeline
+│   ├── config/         # Environment configuration
+│   ├── database/       # Database and caching layers
+│   ├── models/         # SQLAlchemy models
+│   ├── schemas/        # Pydantic schemas
+│   ├── services/       # Business logic and integrations
+│   ├── controllers/    # API route definitions
+│   └── monitoring/     # Monitoring and alerting tools
+└── tests/              # Unit, integration, and e2e tests
+```
+
+---
+
+## License
+
+AIQLeads is licensed under the MIT License. See [LICENSE](LICENSE) for more details.
 
 ---
 
 ## Contributing
 
-We welcome contributions to AIQLeads! To get started:
-1. Fork the repository.
-2. Create a feature branch.
-3. Submit a pull request.
-
----
-
-## Roadmap
-
-- **Phase 1**:
-  - Complete pipeline integration for all supported sources.
-  - Finalize dynamic pricing logic.
-  - Launch MVP with core features.
-- **Phase 2**:
-  - Add advanced AI-powered recommendations.
-  - Expand geospatial analytics.
-  - Introduce API integrations for enterprise clients.
-
----
-
-## License
-
-AIQLeads is licensed under the MIT License. See `LICENSE` for details.
+We welcome contributions! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
 
 ---
 
 ## Contact
 
-For questions or support, please contact:
-- **GitHub**: [YourlocalJay](https://github.com/YourlocalJay)
-- **Email**: support@aiqleads.com
+For support or inquiries:
+- **Repository Owner:** [YourlocalJay](https://github.com/YourlocalJay)
+- **Support Email:** support@aiqleads.com
+
 ---
 
-## License
-This project is licensed under the MIT License. See `LICENSE` for details.
+For more detailed information, refer to the [Architecture Overview](docs/Architecture.md) and [MVP Features](docs/MVP_Overview.md).
