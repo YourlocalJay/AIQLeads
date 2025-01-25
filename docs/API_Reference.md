@@ -1,137 +1,139 @@
 # AIQLeads API Reference
 
-## Schema Validation Framework
+## Core Features
 
-### Core Validation Rules
+### Authentication and Authorization
+[Previous authentication content...]
 
-1. **Authentication Data**
-   - Email: RFC 5322 standard compliance
-   - Password: Minimum 8 characters, includes uppercase, lowercase, number, special character
-   - Phone: International format with country code (+X-XXX-XXX-XXXX)
-   - Token: JWT format with required claims
+## Dynamic Pricing Endpoints
 
-2. **Lead Data**
-   - Price: Positive decimal, maximum 2 decimal places
-   - Location: Valid coordinates within supported regions
-   - Description: Maximum 2000 characters
-   - Metadata: Valid JSON object with predefined schema
+### Get Lead Price
+**GET /api/v1/pricing/lead/{lead_id}**
 
-3. **Transaction Data**
-   - Amount: Positive decimal, maximum 2 decimal places
-   - Timestamp: ISO 8601 format
-   - Reference IDs: UUID v4 format
-   - Status: Enumerated valid states
+Returns dynamically calculated price for a specific lead based on market demand and user tier.
 
-### Enhanced Error Responses
-
-All validation errors return a 422 Unprocessable Entity status with detailed context:
-
+#### Request Parameters
 ```json
 {
-  "status": "error",
-  "code": "VALIDATION_ERROR",
-  "request_id": "uuid-v4",
-  "timestamp": "2025-01-25T12:00:00Z",
-  "detail": [
-    {
-      "field": "field_name",
-      "error": "specific_error_type",
-      "message": "Human-readable explanation",
-      "value": "submitted_value",
-      "constraints": {
-        "rule_name": "rule_details",
-        "allowed_values": ["valid_options"],
-        "pattern": "regex_pattern"
-      },
-      "location": "body|query|header",
-      "suggestion": "Suggested correction"
-    }
-  ],
-  "metrics": {
-    "validation_time": "5ms",
-    "schema_version": "1.2.0"
-  }
+  "lead_id": "uuid-v4",
+  "user_tier": "standard|pro|enterprise",
+  "location": "string",
+  "property_type": "string"
 }
 ```
 
-## Monitoring Integration
-
-### Validation Metrics
-
+#### Response
 ```json
 {
-  "metrics": {
-    "validation_time": "5ms",
-    "schema_version": "1.2.0",
-    "cache_status": "hit|miss",
-    "validation_path": "auth.login.email"
+  "base_price": 125.00,
+  "tier_discount": 15.00,
+  "final_price": 110.00,
+  "demand_multiplier": 1.2,
+  "valid_until": "2025-01-25T14:00:00Z"
+}
+```
+
+## Recommendation Engine
+
+### Get Personalized Recommendations
+**GET /api/v1/recommendations**
+
+Returns personalized lead recommendations based on user history and preferences.
+
+#### Request Parameters
+```json
+{
+  "user_id": "uuid-v4",
+  "location": "string",
+  "price_range": {
+    "min": 0,
+    "max": 1000000
   },
-  "telemetry": {
-    "request_id": "uuid-v4",
-    "timestamp": "2025-01-25T12:00:00Z",
-    "client_version": "2.1.0"
+  "property_types": ["single_family", "multi_family", "commercial"],
+  "limit": 20
+}
+```
+
+#### Response
+```json
+{
+  "recommendations": [{
+    "lead_id": "uuid-v4",
+    "score": 0.95,
+    "match_factors": ["location", "price_range", "property_type"],
+    "price": 125.00,
+    "expiration": "2025-01-25T14:00:00Z"
+  }],
+  "metadata": {
+    "total_matches": 45,
+    "page_size": 20,
+    "next_page_token": "string"
   }
 }
 ```
 
-[Previous authentication endpoints content...]
+## Fraud Detection
+
+### Validate Lead
+**POST /api/v1/leads/validate**
+
+Performs comprehensive lead validation including fraud detection.
+
+#### Request Body
+```json
+{
+  "lead_data": {
+    "contact_info": {
+      "email": "string",
+      "phone": "string"
+    },
+    "property_details": {
+      "address": "string",
+      "price": 500000,
+      "listing_type": "string"
+    },
+    "metadata": {
+      "source": "string",
+      "capture_timestamp": "2025-01-25T12:00:00Z"
+    }
+  }
+}
+```
+
+#### Response
+```json
+{
+  "validation_result": {
+    "is_valid": true,
+    "fraud_score": 0.05,
+    "confidence": 0.95,
+    "checks_passed": [
+      "contact_validation",
+      "property_verification",
+      "duplicate_detection"
+    ],
+    "warnings": []
+  },
+  "metadata": {
+    "processing_time": "150ms",
+    "validation_timestamp": "2025-01-25T12:00:01Z"
+  }
+}
+```
 
 ## Performance Considerations
 
-### Validation Processing
-- Average validation time: 5ms
-- Timeout threshold: 500ms
-- Rate limits: 100 requests/minute
-- Schema cache hit rate: 95%
+### Rate Limits
+- Standard Tier: 100 requests/minute
+- Pro Tier: 500 requests/minute
+- Enterprise Tier: 2000 requests/minute
 
-### Response Times
-- Authentication: 95% < 200ms
-- Data validation: 99% < 100ms
-- Error responses: 90% < 50ms
-- Schema resolution: 95% < 10ms
+### Caching
+- Price calculations: 5-minute cache
+- Recommendations: 15-minute cache
+- Validation results: 24-hour cache
 
-### Monitoring Integration
-- Prometheus metrics export
-- Grafana dashboards
-- Alert thresholds
-- Performance tracking
-
-## Best Practices
-
-1. **Input Validation**
-   - Always validate data before processing
-   - Use appropriate content-type headers
-   - Handle character encoding properly
-   - Implement schema caching
-
-2. **Error Handling**
-   - Include sufficient error details
-   - Maintain consistent error format
-   - Avoid exposing internal errors
-   - Track validation failures
-
-3. **Security**
-   - Validate authentication tokens
-   - Sanitize all user inputs
-   - Implement rate limiting
-   - Monitor validation patterns
-
-4. **Performance**
-   - Use schema caching
-   - Implement batch validation
-   - Monitor validation times
-   - Track schema versions
-
-## Testing Guidelines
-
-1. **Validation Testing**
-   - Test boundary conditions
-   - Verify all validation rules
-   - Check error message clarity
-   - Monitor performance impact
-
-2. **Performance Testing**
-   - Monitor validation times
-   - Test under expected load
-   - Verify timeout handling
-   - Track cache efficiency
+### Monitoring
+- Response time threshold: 200ms
+- Error rate threshold: 1%
+- Cache hit rate target: 85%
