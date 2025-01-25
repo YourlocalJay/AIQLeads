@@ -1,4 +1,4 @@
-# Schema Documentation for AIQLeads
+# AIQLeads - Schema Documentation
 
 This document provides an exhaustive overview of the database schemas used in the AIQLeads MVP. It outlines the core models, their fields, relationships, constraints, and key features. Each schema has been optimized for scalability, geospatial queries, and integration with the dynamic pricing and recommendation systems.
 
