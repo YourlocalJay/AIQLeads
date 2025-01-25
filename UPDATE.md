@@ -15,7 +15,7 @@
 - Data processing pipeline enhancements
 - API integration framework development
 - Testing improvements for address validation
-- Monitoring dashboard refinements
+- Alert thresholds configuration
 
 ## Next Milestones
 1. Q1 2025
@@ -32,7 +32,6 @@
 
 ## Technical Debt
 - Enhance error handling in API integrations
-- Configure alert thresholds
 
 ## Performance Metrics
 - Test Coverage: 94%
