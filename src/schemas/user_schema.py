@@ -1,155 +1,95 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, validator
 import re
 
-# Constants
-AVAILABLE_MARKETS = ["Las Vegas", "Dallas/Ft. Worth", "Austin", "Phoenix"]
-
-class NotificationPreferences(BaseModel):
-    """Schema for user notification preferences."""
-    email: bool = True
-    sms: bool = False
-    lead_alerts: bool = True
-    market_insights: bool = True
-
 class UserBase(BaseModel):
-    """Base user schema with common fields and validations."""
+    """Base user schema with common fields"""
     email: EmailStr
-    first_name: Optional[str] = Field(None, max_length=100)
-    last_name: Optional[str] = Field(None, max_length=100)
-    company_name: Optional[str] = Field(None, max_length=200)
-    phone: Optional[str] = Field(None, max_length=20)
-    preferred_market: Optional[str] = Field(
-        None,
-        description="Primary market of interest"
-    )
-    notification_preferences: NotificationPreferences = Field(
-        default_factory=NotificationPreferences
-    )
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    company_name: Optional[str] = None
+    phone: Optional[str] = None
 
     @validator('phone')
     def validate_phone(cls, v):
-        """Validate and normalize phone number format."""
         if v is None:
             return v
-        v = v.replace(" ", "")
-        if not (re.match(r'^\+\d(-\d{3})*(-\d{4})?$', v) or re.match(r'^\+\d+$', v)):
-            raise ValueError('Invalid phone format. Expected: +X-XXX-XXX-XXXX or +XXXXXXXXXXXX')
-        return v
-
-    @validator('preferred_market')
-    def validate_market_availability(cls, v):
-        """Validate that the selected market is supported."""
-        if v and v not in AVAILABLE_MARKETS:
-            raise ValueError(f"Market {v} not currently supported. Available markets: {', '.join(AVAILABLE_MARKETS)}")
+        # Check for valid phone format: +{country_code}-{area_code}-{local_number}
+        phone_pattern = r'^\+(?!\+)[1-9]\d{0,2}[-\s]?\d{1,3}[-\s]?\d{1,4}[-\s]?\d{1,4}$'
+        if not re.match(phone_pattern, v):
+            raise ValueError('Invalid phone number format. Must include country code and follow format: +X-XXX-XXX-XXXX')
         return v
 
 class UserCreate(UserBase):
-    """Schema for user creation with password validation."""
+    """Schema for user creation"""
     password: str = Field(..., min_length=8)
 
     @validator('password')
-    def validate_password_complexity(cls, v):
-        """
-        Validate password meets complexity requirements:
-        - At least 8 characters
-        - At least one uppercase letter
-        - At least one lowercase letter
-        - At least one digit
-        - At least one special character (@$!%*?&#)
-        """
+    def validate_password(cls, v):
         if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter.')
+            raise ValueError('Password must contain at least one uppercase letter')
         if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter.')
+            raise ValueError('Password must contain at least one lowercase letter')
         if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit.')
+            raise ValueError('Password must contain at least one number')
         if not re.search(r'[@$!%*?&#]', v):
-            raise ValueError('Password must contain at least one special character (e.g., @$!%*?&#).')
+            raise ValueError('Password must contain at least one special character (@$!%*?&#)')
         return v
 
 class UserUpdate(BaseModel):
-    """Schema for user updates allowing partial updates."""
-    email: Optional[EmailStr] = None
+    """Schema for user updates"""
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    company_name: Optional[str] = None
+    phone: Optional[str] = None
     password: Optional[str] = None
-    first_name: Optional[str] = Field(None, max_length=100)
-    last_name: Optional[str] = Field(None, max_length=100)
-    company_name: Optional[str] = Field(None, max_length=200)
-    phone: Optional[str] = Field(None, max_length=20)
-    preferred_market: Optional[str] = None
-    notification_preferences: Optional[NotificationPreferences] = None
-    is_active: Optional[bool] = Field(default=None)
-    is_verified: Optional[bool] = Field(default=None)
 
     @validator('password')
-    def validate_password_if_provided(cls, v):
-        """Validate password only if it's being updated."""
-        if v is not None:
-            UserCreate.validate_password_complexity(v)
+    def validate_password(cls, v):
+        if v is None:
+            return v
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'[a-z]', v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one number')
+        if not re.search(r'[@$!%*?&#]', v):
+            raise ValueError('Password must contain at least one special character (@$!%*?&#)')
         return v
 
     @validator('phone')
     def validate_phone(cls, v):
-        """Reuse phone validation from UserBase."""
-        return UserBase.validate_phone(v) if v else v
-
-    @validator('preferred_market')
-    def validate_market_if_provided(cls, v):
-        """Validate market only if it's being updated."""
-        return UserBase.validate_market_availability(v) if v else v
+        if v is None:
+            return v
+        phone_pattern = r'^\+(?!\+)[1-9]\d{0,2}[-\s]?\d{1,3}[-\s]?\d{1,4}[-\s]?\d{1,4}$'
+        if not re.match(phone_pattern, v):
+            raise ValueError('Invalid phone number format. Must include country code and follow format: +X-XXX-XXX-XXXX')
+        return v
 
 class UserInDB(UserBase):
-    """Schema for user data as stored in the database."""
+    """Schema for user database representation"""
     id: int
-    is_active: bool = Field(default=True)
-    is_verified: bool = Field(default=False)
+    is_active: bool = True
+    is_verified: bool = False
     created_at: datetime
     updated_at: datetime
-    last_login_attempt: Optional[datetime] = None
-    failed_login_attempts: int = Field(default=0)
-    account_locked_until: Optional[datetime] = None
 
     class Config:
-        """Pydantic configuration for datetime handling."""
+        orm_mode = True
         json_encoders = {
-            datetime: lambda v: v.isoformat()
+            datetime: lambda v: v.isoformat() if v else None
         }
+        
+    @validator('created_at', 'updated_at')
+    def ensure_timezone(cls, v):
+        if v and v.tzinfo is None:
+            return v.replace(tzinfo=None)  # Ensure UTC for naive datetimes
+        return v
 
 class UserResponse(UserInDB):
-    """Schema for user data in API responses."""
-    subscription_tier: Optional[str] = None
-    subscription_status: Optional[str] = None
-    total_leads_purchased: Optional[int] = Field(default=0)
-    available_credits: Optional[int] = Field(default=0)
-    authorized_markets: List[str] = Field(default_factory=list)
-
-    class Config:
-        """Configure schema for response serialization."""
-        orm_mode = True
-        schema_extra = {
-            "example": {
-                "id": 1,
-                "email": "user@example.com",
-                "first_name": "John",
-                "last_name": "Doe",
-                "company_name": "Example Corp",
-                "phone": "+1-234-567-8900",
-                "preferred_market": "Las Vegas",
-                "notification_preferences": {
-                    "email": True,
-                    "sms": False,
-                    "lead_alerts": True,
-                    "market_insights": True
-                },
-                "subscription_tier": "Professional",
-                "subscription_status": "active",
-                "total_leads_purchased": 150,
-                "available_credits": 1000,
-                "authorized_markets": ["Las Vegas", "Phoenix"],
-                "is_active": True,
-                "is_verified": True,
-                "created_at": "2023-01-01T12:00:00",
-                "updated_at": "2023-01-01T12:30:00"
-            }
-        }
+    """Schema for user API responses"""
+    pass
