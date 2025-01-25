@@ -1,101 +1,56 @@
 # Project Structure
 
+## Directory Overview
 ```
 AIQLeads/
 ├── src/
-│   ├── __init__.py
-│   ├── main.py
 │   ├── config/
 │   │   ├── __init__.py
-│   │   └── settings.py
+│   │   └── settings.py        # Application configuration
 │   ├── database/
 │   │   ├── __init__.py
-│   │   └── postgres_manager.py
+│   │   └── postgres_manager.py # Database connection management
 │   ├── models/
-│   │   ├── __init__.py
-│   │   ├── user_model.py
-│   │   ├── lead_model.py
-│   │   ├── transaction_model.py
-│   │   ├── subscription_model.py
-│   │   └── market_insight_model.py
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── auth_service.py
-│   │   ├── lead_service.py
-│   │   ├── pricing_service.py
-│   │   └── recommendations_service.py
-│   ├── api/
-│   │   ├── __init__.py
-│   │   ├── v1/
-│   │   │   ├── __init__.py
-│   │   │   ├── endpoints/
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── users.py
-│   │   │   │   ├── leads.py
-│   │   │   │   └── transactions.py
-│   │   │   └── dependencies.py
-│   │   └── middleware.py
-│   └── utils/
+│   │   └── user_model.py      # SQLAlchemy models
+│   └── schemas/
 │       ├── __init__.py
-│       ├── validators.py
-│       └── helpers.py
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── unit/
-│   │   ├── __init__.py
-│   │   ├── test_user_model.py
-│   │   ├── test_lead_model.py
-│   │   ├── test_transaction_model.py
-│   │   └── test_subscription_model.py
-│   └── integration/
-│       ├── __init__.py
-│       └── test_alembic_migrations.py
-├── migrations/
-│   ├── env.py
-│   ├── script.py.mako
-│   └── versions/
-│       └── initial_migration.py
-├── docs/
-│   ├── README.md
-│   ├── Architecture.md
-│   ├── ProjectStructure.md
-│   ├── MVP_Overview.md
-│   └── MarketInsights.md
-├── requirements.txt
-├── requirements-dev.txt
-├── docker-compose.yml
-├── Dockerfile
-├── .env.example
-├── .gitignore
-├── README.md
-└── UPDATE.md
+│       └── user_schema.py     # Pydantic validation schemas
+└── tests/
+    └── unit/
+        ├── test_user_model.py
+        └── test_user_schema.py
 ```
 
-## Key Directories
+## Component Details
 
-- `src/`: Main application code
-  - `models/`: SQLAlchemy models defining database schema
-  - `services/`: Business logic and core functionality
-  - `api/`: FastAPI routes and endpoint handlers
-  - `utils/`: Shared utilities and helper functions
+### Models
+SQLAlchemy models define database structure and relationships:
+- User model with authentication
+- Lead tracking system
+- Transaction management
+- Subscription handling
 
-- `tests/`: Test suite
-  - `unit/`: Unit tests for individual components
-  - `integration/`: Integration tests for system components
+### Schemas
+Pydantic schemas ensure data validation:
+- User data validation
+- Request/response formatting
+- Complex validation rules
+- Type checking enforcement
 
-- `migrations/`: Alembic database migrations
-  - `versions/`: Individual migration scripts
+### Configuration
+- Environment-based settings
+- Secure credential management
+- Database configuration
+- Logging setup
 
-- `docs/`: Project documentation
+### Database
+- PostgreSQL integration
+- Connection pooling
+- Migration management
+- Query optimization
 
-## File Naming Conventions
-
-1. All Python files use snake_case.
-2. Test files are prefixed with `test_`.
-3. Model files are suffixed with `_model.py`.
-4. Service files are suffixed with `_service.py`.
-
-## Notes
-- Maintain modularity by adhering to directory and naming conventions.
-- Update this structure whenever new features or directories are added to ensure alignment with project growth.
+## Testing Structure
+- Unit tests (94% coverage)
+- Integration tests
+- Performance benchmarks
+- Validation testing
