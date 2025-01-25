@@ -43,7 +43,7 @@
 
 ## Getting Started
 
-Follow the [Usage Guide](Usage.md) for detailed setup instructions.
+For more detailed setup instructions, see [README_docs.md](docs/README_docs.md).
 
 ### Prerequisites
 - Python 3.10+
@@ -115,4 +115,4 @@ For support or inquiries:
 
 ---
 
-For more detailed information, refer to the [Architecture Overview](docs/Architecture.md) and [MVP Features](docs/MVP_Overview.md).
+For additional details, refer to [README_docs.md](docs/README_docs.md).
