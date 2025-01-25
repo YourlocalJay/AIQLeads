@@ -1,1 +1,0 @@
-{"message": "Test file", "content": "VGVzdCBjb250ZW50", "encoding": "base64"}
