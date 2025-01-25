@@ -67,6 +67,14 @@ CONFIG = {
     "queue": {
         "max_size": 1000,
         "batch_size": 10
+    },
+    "alerts": {
+        "error_rate_threshold": 5.0,  # Percentage
+        "queue_full_threshold": 80.0,  # Percentage
+        "circuit_trips_threshold": 3,  # Per minute
+        "response_time_threshold": 500,  # Milliseconds
+        "batch_failure_threshold": 10.0,  # Percentage
+        "redis_latency_threshold": 100,  # Milliseconds
     }
 }
 ```
@@ -77,17 +85,34 @@ CONFIG = {
 - Queue lengths
 - Cache hit rates
 - Error rates
+- Redis latency
+- Batch success rates
 
 ## Redis Schema
 ```
 {prefix}:{endpoint}:requests -> Sorted set of timestamps
 {prefix}:{endpoint}:metrics -> Hash of metrics
 {prefix}:{endpoint}:state -> Circuit breaker state
+{prefix}:{endpoint}:alerts -> Recent alert history
 ```
 
 ## Monitoring
-- Grafana dashboards
-- Alert thresholds:
-  - Error Rate: > 5%
-  - Queue Full: > 80%
-  - Circuit Trips: > 3/min
+### Grafana Dashboards
+- Request Rate Panel
+- Error Rate Panel
+- Queue Status Panel
+- Circuit Breaker Panel
+- Redis Health Panel
+
+### Alert Thresholds
+- Error Rate: > 5%
+- Queue Full: > 80%
+- Circuit Trips: > 3/min
+- Response Time: > 500ms
+- Batch Failures: > 10%
+- Redis Latency: > 100ms
+
+### Alert Channels
+- Slack: Real-time notifications
+- PagerDuty: Critical failures
+- Email: Daily summaries
