@@ -101,6 +101,8 @@ AIQLeads is an innovative lead marketplace designed for real estate professional
 - Implement basic AI recommendations.
 - Add fraud detection and data cleaning pipeline.
 
+---
+
 ## Future Enhancements
 1. **Dynamic Pricing Optimization**: Continuous adjustments using real-time demand metrics.
 2. **White-Label Platform**: Provide customization for partner brokerages.
@@ -110,4 +112,4 @@ AIQLeads is an innovative lead marketplace designed for real estate professional
 ---
 
 ## Conclusion
-The AIQLeads MVP is a scalable, AI-driven solution for real estate professionals, designed to maximize lead quality, reduce time-to-purchase, and improve decision-making through actionable insights and advanced analytics.
+The AIQLeads MVP is a scalable, AI-driven solution for real estate professionals, designed to maximize lead quality, reduce time-to-purchase, and improve decision-making through actionable insights and advanced analytics
