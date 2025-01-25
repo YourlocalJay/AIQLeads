@@ -1,32 +1,78 @@
 # AIQLeads Schema Documentation
 
-[Previous Schema Content...]
+## Schema-Model Cross-Reference
 
-## Performance Considerations
+### User Models
+- **Location**: `src/models/user.py`
+- **Schema**: `src/schemas/user_schema.py`
+- **Validation Rules**:
+  - Email format (RFC 5322)
+  - Password complexity
+  - Phone number formatting
+- **Performance Metrics**:
+  - Validation Time: < 5ms
+  - Cache Hit Rate: 95%
 
-### Query Optimization
-- Indexed fields: email, phone, created_at
-- Compound indexes for frequent query patterns
-- Geospatial indexing for location queries
+### Lead Models
+- **Location**: `src/models/lead.py`
+- **Schema**: `src/schemas/lead_schema.py`
+- **Validation Rules**:
+  - Price formatting
+  - Geographic coordinates
+  - Description length
+- **Performance Metrics**:
+  - Validation Time: < 8ms
+  - Cache Hit Rate: 90%
 
-### Performance Metrics
-- Average validation time: 5ms
-- Query response times:
-  - Simple queries: <10ms
-  - Complex joins: <50ms
-  - Geospatial queries: <100ms
+### Transaction Models
+- **Location**: `src/models/transaction.py`
+- **Schema**: `src/schemas/transaction_schema.py`
+- **Validation Rules**:
+  - Amount precision
+  - Timestamp format
+  - Reference ID format
+- **Performance Metrics**:
+  - Validation Time: < 6ms
+  - Cache Hit Rate: 93%
 
-### Error Handling
+## Performance Monitoring
 
-#### Data Integrity
-- Constraint enforcement
-- Transaction management
-- Rollback procedures
+### Metrics Collection
+- Validation processing times
+- Error rates by schema type
+- Cache performance statistics
+- Version distribution tracking
 
-#### Validation Pipeline
-1. Schema validation
-2. Business rule validation
-3. Cross-field validation
-4. Error aggregation and reporting
+### Alert Thresholds
+- Validation Time: > 10ms
+- Error Rate: > 1%
+- Cache Hit Rate: < 85%
+- Version Mismatch Detection
 
-[Remaining Schema Content...]
+## Schema Version Management
+
+### Version Control
+- Redis-backed version tracking
+- Automatic version incrementation
+- Migration history maintenance
+- Performance impact monitoring
+
+### Cache Management
+- Schema caching strategy
+- Version-based invalidation
+- Cache warm-up procedures
+- Hit rate monitoring
+
+## Error Handling Specifications
+
+### Validation Errors
+- Structured error responses
+- Detailed error context
+- Performance impact tracking
+- Error rate monitoring
+
+### Recovery Procedures
+- Automatic retry logic
+- Fallback mechanisms
+- Version rollback procedures
+- Cache recovery strategies
