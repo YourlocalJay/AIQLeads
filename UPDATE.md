@@ -1,184 +1,221 @@
-# AIQLeads MVP Implementation Tracker
+# AIQLeads MVP Development Tracker
 
-## Currently Implemented Components
+## Current Directory Structure
 
-### Directory Structure
 ```
 AIQLeads/
 ├── .github/
-│   ├── workflows/
-│   │   ├── ci.yml                  # Continuous Integration workflow
-│   │   ├── cd.yml                  # Continuous Deployment workflow
-│   │   ├── lint.yml                # Code linting checks (Black, isort)
-│   │   └── security_scan.yml       # Security checks (Bandit, Dependabot)
-│   └── scripts/
-│       └── update_files.py         # GitHub automation script
+│   └── workflows/
+│       ├── ci.yml
+│       ├── cd.yml
+│       ├── lint.yml
+│       └── security_scan.yml
+├── .gitignore
+├── LICENSE
+├── README.md
+├── requirements.txt
+├── setup.py
+├── Dockerfile
+├── docker-compose.yml
+├── .env.example
 ├── docs/
-│   ├── README.md                   # Overview of documentation
-│   ├── MVP_Overview.md             # Vision, goals, and feature set
-│   ├── Architecture.md             # Technical architecture
-│   ├── API_Reference.md            # API documentation
-│   ├── DataFlow.md                 # Aggregator flow
-│   ├── MarketInsights.md           # Market-specific details
-│   ├── CHANGELOG.md                # Version history
+│   ├── README.md
+│   ├── MVP_Overview.md
+│   ├── Architecture.md
+│   ├── API_Reference.md
+│   ├── DataFlow.md
+│   ├── MarketInsights.md
+│   ├── CHANGELOG.md
 │   └── LEGAL/
 │       ├── TermsOfService.md
 │       └── PrivacyPolicy.md
+├── scripts/
+│   ├── deploy.sh
+│   ├── seed_db.py
+│   └── infra/
+│       └── terraform/
+│           └── main.tf
+├── migrations/
+│   └── versions/
+│       └── placeholder
 ├── src/
+│   ├── __init__.py
+│   ├── main.py
 │   ├── config/
-│   │   └── settings.py             # Centralized configuration
+│   │   ├── __init__.py
+│   │   └── settings.py
 │   ├── database/
-│   │   ├── postgres_manager.py     # Database connection pooling
-│   │   ├── redis_manager.py        # Redis for caching and rate limiting
-│   │   └── search_manager.py       # Elasticsearch/OpenSearch integration
+│   │   ├── __init__.py
+│   │   ├── postgres_manager.py
+│   │   ├── redis_manager.py
+│   │   ├── geospatial_manager.py
+│   │   └── search_manager.py
 │   ├── aggregator/
+│   │   ├── __init__.py
+│   │   ├── pipeline.py
+│   │   ├── scraper_utils.py
 │   │   ├── scrapers/
+│   │   │   ├── __init__.py
 │   │   │   ├── craigslist_scraper.py
-│   │   │   ├── facebook_scraper.py
+│   │   │   ├── zillow_scraper.py
 │   │   │   ├── fsbo_scraper.py
-│   │   │   └── linkedin_scraper.py
+│   │   │   ├── facebook_scraper.py
+│   │   │   ├── las_vegas_scraper.py
+│   │   │   ├── dallas_scraper.py
+│   │   │   ├── austin_scraper.py
+│   │   │   └── phoenix_scraper.py
 │   │   ├── parsers/
+│   │   │   ├── __init__.py
 │   │   │   ├── craigslist_parser.py
-│   │   │   ├── facebook_parser.py
+│   │   │   ├── zillow_parser.py
 │   │   │   ├── fsbo_parser.py
-│   │   │   └── linkedin_parser.py
-│   │   ├── pipeline.py             # Data ingestion and orchestration
-│   │   ├── scraper_utils.py        # Shared scraping utilities
-│   │   └── exceptions.py           # Custom scraper-related exceptions
+│   │   │   ├── facebook_parser.py
+│   │   │   ├── las_vegas_parser.py
+│   │   │   ├── dallas_parser.py
+│   │   │   ├── austin_parser.py
+│   │   │   └── phoenix_parser.py
+│   │   └── exceptions.py
 │   ├── models/
-│   │   ├── user_model.py           # User model
-│   │   ├── lead_model.py           # Lead model
-│   │   ├── transaction_model.py    # Transaction model
-│   │   ├── subscription_model.py   # Subscription management
-│   │   └── market_insight_model.py # Market insights
+│   │   ├── __init__.py
+│   │   ├── user_model.py
+│   │   ├── lead_model.py
+│   │   ├── transaction_model.py
+│   │   ├── subscription_model.py
+│   │   ├── market_insights_model.py
+│   │   └── model_version_model.py
 │   ├── schemas/
+│   │   ├── __init__.py
 │   │   ├── user_schema.py
 │   │   ├── lead_schema.py
-│   │   ├── transaction_schema.py
+│   │   ├── pricing_schema.py
 │   │   ├── subscription_schema.py
-│   │   └── market_insight_schema.py
+│   │   └── model_version_schema.py
 │   ├── services/
+│   │   ├── __init__.py
 │   │   ├── lead_marketplace_service.py
 │   │   ├── dynamic_pricing_service.py
-│   │   ├── ai_recommendations_service.py
 │   │   ├── cart_management_service.py
 │   │   ├── credit_system_service.py
-│   │   ├── lead_validation_service.py
+│   │   ├── lead_review_service.py
 │   │   ├── subscription_service.py
+│   │   ├── ai_recommendations_service.py
 │   │   ├── analytics_service.py
-│   │   └── payment_service.py
+│   │   ├── data_retention_service.py
+│   │   ├── marketing_service.py
+│   │   └── ai_pipeline_manager.py
 │   ├── controllers/
+│   │   ├── __init__.py
 │   │   ├── lead_marketplace_controller.py
 │   │   ├── dynamic_pricing_controller.py
-│   │   ├── ai_recommendations_controller.py
 │   │   ├── cart_management_controller.py
 │   │   ├── credit_system_controller.py
 │   │   ├── subscription_controller.py
-│   │   └── market_insights_controller.py
+│   │   ├── market_insights_controller.py
+│   │   └── ai_recommendations_controller.py
 │   ├── utils/
+│   │   ├── __init__.py
 │   │   ├── logger.py
 │   │   ├── validators.py
-│   │   ├── pricing_helpers.py
-│   │   └── geospatial_helpers.py
+│   │   ├── geospatial_helpers.py
+│   │   └── pricing_helpers.py
 │   ├── monitoring/
-│   │   ├── metrics_service.py       # Prometheus/Grafana integration
-│   │   ├── alerts_service.py        # Slack/PagerDuty integration
-│   │   └── user_activity_monitor.py # Tracks user sessions
-│   └── main.py                      # FastAPI app entry point
+│   │   ├── __init__.py
+│   │   ├── metrics_service.py
+│   │   ├── alerts_service.py
+│   │   └── user_activity_monitor.py
+│   └── gateway/
+│       ├── __init__.py
+│       └── rate_limiting.py
 ├── tests/
-│   ├── unit/                       # Unit tests
-│   ├── integration/                # Integration tests
-│   ├── e2e/                        # End-to-end tests
-│   └── mocks/                      # Mock data and fixtures
-├── Dockerfile                      # Application containerization
-├── docker-compose.yml              # Multi-container setup
-├── requirements.txt                # Python dependencies
-├── setup.py                        # Packaging and installation
-└── .env.example                    # Example environment variables
+│   ├── __init__.py
+│   ├── mocks/
+│   │   ├── sample_leads.json
+│   │   ├── dummy_users.json
+│   │   └── scraper_responses.json
+│   ├── unit/
+│   │   └── ... (mirrors src structure)
+│   ├── integration/
+│   │   └── ... (mirrors src structure)
+│   └── e2e/
+│       └── ... (mirrors real user flows)
+└── frontend/
+    ├── package.json
+    ├── yarn.lock
+    ├── public/
+    └── src/
+        ├── App.js
+        ├── components/
+        ├── pages/
+        └── utils/
 ```
 
 ---
 
-## Current Status
+## AIQLeads MVP Roadmap to Completion
 
-### Recent Completions
-- **Rate Limiting Enhancements**:
-  - Added Redis-backed rate limiters for scrapers with 95% test coverage.
-  - Integrated Slack and PagerDuty for alerting on rate limiter failures.
-  - Implemented circuit breakers for cascading failure prevention.
-- **User Schema Validation**:
-  - Comprehensive validation system for user input with clear error reporting.
-- **Lead Validation Service**:
-  - Parallel validation of lead contact information with caching for efficiency.
-  - Integrated LangChain pipelines for address normalization.
-- **Comprehensive Documentation**:
-  - Added detailed docs for schema validation, rate limiting, and monitoring systems.
-- **Monitoring and Metrics**:
-  - Deployed Prometheus/Grafana dashboards to track scraper success rates, rate limiter efficiency, and data pipeline performance.
+### PHASE 1: Aggregator Expansion
+**Objective:** Finalize the scrapers and parsers for all supported platforms.
 
-### In Progress
-- **Search & Advanced Filtering**:
-  - Implementing Elasticsearch for full-text and faceted search capabilities.
-  - Adding radius-based geospatial queries via PostGIS.
-- **AI Data Cleaning & Fraud Detection**:
-  - Enhancing lead quality with LLM-powered data normalization.
-  - Assigning fraud and quality scores to all leads.
-- **Dynamic Pricing System**:
-  - Developing a pricing engine that factors demand, lead quality, and user tier.
-- **Market Insights Module**:
-  - Aggregating regional data for advanced analytics and user-facing insights.
-
-### Next Milestones
-
-#### Q1 2025
-1. **Complete Data Processing Pipeline**:
-   - Finalize scrapers, parsers, and validation services.
-   - Ensure seamless ingestion of data from all platforms (LinkedIn, Facebook, Zillow, etc.).
-2. **API Enhancements**:
-   - Launch new endpoints for advanced lead searches and recommendations.
-   - Include dynamic pricing and fraud detection APIs.
-3. **Monitoring Dashboards**:
-   - Expand Grafana panels to cover pricing changes, lead recommendations, and cart management performance.
-
-#### Q2 2025
-1. **Recommendation Engine**:
-   - Integrate vector database (Pinecone or Weaviate) for personalized lead suggestions.
-2. **Payment System Refinements**:
-   - Automate subscription renewals.
-   - Add refund workflows for disputed leads.
-3. **Real-Time Analytics**:
-   - Finalize the Market Insights API and integrate geospatial heatmaps.
+#### Deliverables:
+- Implement `linkedin_scraper.py` and `facebook_scraper.py`
+- Integrate all scrapers into the pipeline
+- Refactor error handling and retry mechanisms in `scraper_utils.py`
+- Achieve 90%+ test coverage for scrapers and parsers
 
 ---
 
-## Performance Metrics
-- **Test Coverage**: 94%
-- **API Response Time**: 150ms (avg)
-- **Data Processing Throughput**: 1000 records/min
-- **Error Rate**: 0.5%
-- **Address Validation Cache Hit Rate**: 75%
-- **Rate Limiter Efficiency**: 99.9%
-- **Schema Validation Processing**: 5ms (avg)
+### PHASE 2: Data Storage & Indexing
+**Objective:** Enhance search and storage systems to handle real-time indexing.
+
+#### Deliverables:
+- Finalize `search_manager.py` with Elasticsearch integration
+- Implement radius-based and advanced filtering capabilities
+- Add PostgreSQL optimizations (indexes, constraints) for high throughput
+- Create unit and integration tests for database operations
 
 ---
 
-## Technical Debt
-- Improve error handling in API integrations.
-- Optimize database queries for lead searches and user operations.
-- Address occasional failures in external API calls (e.g., scraper retries).
+### PHASE 3: AI-Powered Features
+**Objective:** Build and refine AI-driven recommendation and pricing systems.
+
+#### Deliverables:
+- Develop `ai_recommendations_service.py` using embeddings
+- Finalize `dynamic_pricing_service.py` to adjust lead prices in real-time
+- Integrate vector database (e.g., Pinecone) for recommendation storage
+- Ensure test coverage for AI modules
 
 ---
 
-## Action Items
-1. **Complete Search Integration**:
-   - Finalize Elasticsearch setup and indexing.
-   - Implement advanced filtering and radius-based search.
-2. **Finalize Dynamic Pricing**:
-   - Integrate with lead_quality_score and subscription_tier.
-   - Test pricing adjustments under different demand scenarios.
-3. **Develop AI Recommendations**:
-   - Connect vector database to user profiles and leads.
-   - Ensure recommendations factor in user behavior and regional preferences.
-4. **Complete Market Insights Module**:
-   - Implement API endpoints for trend analysis and geospatial data.
-   - Populate initial insights using aggregated lead data.
+### PHASE 4: Cart Management & Subscription Enhancements
+**Objective:** Improve cart functionality and subscription features.
+
+#### Deliverables:
+- Implement cart timers and premium hold extensions in `cart_management_service.py`
+- Refactor subscription tiers and renewals in `subscription_service.py`
+- Add automated tests for cart expiration, extensions, and notifications
+
+---
+
+### PHASE 5: Analytics & Monitoring
+**Objective:** Provide insights and ensure platform reliability.
+
+#### Deliverables:
+- Finalize `analytics_service.py` for regional insights and trend analysis
+- Build Grafana dashboards using metrics from `metrics_service.py`
+- Set up Slack/PagerDuty alerts for key failures
+- Test end-to-end reliability with E2E tests in `tests/e2e/`
+
+---
+
+### Completion Metrics
+| Phase         | Description                         | Status     |
+|---------------|-------------------------------------|------------|
+| PHASE 1       | Aggregator Expansion                | **75%**    |
+| PHASE 2       | Data Storage & Indexing             | **60%**    |
+| PHASE 3       | AI-Powered Features                 | **50%**    |
+| PHASE 4       | Cart & Subscription Enhancements    | **40%**    |
+| PHASE 5       | Analytics & Monitoring              | **30%**    |
+
+---
+
+### Overall Completion: **51%**
