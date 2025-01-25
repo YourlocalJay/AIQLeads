@@ -1,0 +1,30 @@
+groups:
+  - name: SchemaValidationAlerts
+    rules:
+      - alert: HighValidationLatency
+        expr: |
+          rate(schema_validation_duration_seconds_sum[5m]) / 
+          rate(schema_validation_duration_seconds_count[5m]) * 1000 > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: High schema validation latency
+          description: |
+            Schema validation latency exceeded 10ms threshold for {{ $labels.endpoint }}
+            Current value: {{ $value | printf "%.2f" }}ms
+
+      - alert: LowCacheHitRate
+        expr: |
+          sum(rate(schema_cache_operations_total{status="hit"}[5m])) / 
+          sum(rate(schema_cache_operations_total[5m])) * 100 < 85
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: Low cache hit rate
+          description: |
+            Cache hit rate below 85% threshold
+            Current rate: {{ $value | printf "%.1f" }}%
