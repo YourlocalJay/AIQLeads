@@ -1,69 +1,113 @@
 # AIQLeads MVP Overview
 
-## 1. Introduction
-AIQLeads is an AI-driven lead marketplace designed to streamline real estate lead acquisition and management. The platform aggregates leads from multiple sources—like Zillow, Craigslist, FSBO, Facebook, LinkedIn, and more—then enriches them with AI-powered data cleaning, dynamic pricing, and fraud detection.
-
-### Key Objectives
-1. **High-Quality Leads**  
-   - Leverage advanced scrapers, AI data cleaning, and fraud detection to ensure only the best leads are shown.
-2. **Efficient Purchasing Flow**  
-   - Implement credit-based transactions, cart timers, and geospatial filters for a frictionless user experience.
-3. **AI-Driven Personalization**  
-   - Provide customized lead recommendations and dynamic pricing that adapt to user preferences and market conditions.
-4. **Scalability & Regional Focus**  
-   - Target high-demand real estate markets (Las Vegas, Dallas/Ft. Worth, Austin, Phoenix) with modular, extensible scrapers.
+## Vision
+AIQLeads is an innovative lead marketplace designed for real estate professionals. It combines advanced scraping, AI-driven insights, geospatial analytics, and dynamic pricing to deliver high-quality, relevant leads in real-time. The MVP focuses on high-demand markets, including Las Vegas, Dallas/Ft. Worth, Austin, and Phoenix, and lays the groundwork for scaling into other regions.
 
 ---
 
-## 2. Core MVP Features
+## Core Features
 
-1. **Lead Aggregation & Scraping**  
-   - Collect property listings from Zillow, Craigslist, FSBO, Facebook, and LinkedIn job/housing groups.  
-   - Region-specific scrapers (e.g., `las_vegas_scraper.py`, `austin_scraper.py`) ensure localized coverage.
+### 1. Lead Marketplace
+#### Centralized Repository
+- Aggregates property listings from multiple platforms:
+  - **Zillow**
+  - **Craigslist**
+  - **FSBO.com**
+  - **Facebook Marketplace**
+  - **LinkedIn (targeted groups)**
+- Advanced filtering:
+  - Location (city, zip code, radius-based)
+  - Price range, property type, bedrooms, square footage
+  - Additional features (e.g., waterfront, pool)
+- Full-text & faceted search powered by **Elasticsearch/OpenSearch**.
 
-2. **AI-Powered Data Cleaning & Fraud Detection**  
-   - Use LLMs (OpenAI, Anthropic, etc.) for data normalization, addressing incomplete or inconsistent fields.  
-   - Assign fraud and quality scores to each lead (e.g., detecting duplicates or suspicious patterns).
-
-3. **Dynamic Pricing**  
-   - Calculate real-time lead prices based on:
-     - **Demand** (number of views, cart additions).  
-     - **Lead Quality** (property size, verified details).  
-     - **Market Trends** (regional demand surges).  
-   - Premium users may see discounted pricing or priority access.
-
-4. **Multi-Tier Credit System**  
-   - **Basic**, **Pro**, and **Enterprise** tiers with different credit purchase rates.  
-   - Credits deducted when purchasing or reserving leads.
-
-5. **Cart Management & Timers**  
-   - **Global Timer**: Restricts total cart duration (e.g., 15 minutes).  
-   - **Item-Level Timers**: Each lead can have its own countdown for reservation.  
-   - **Premium Extensions**: Users can hold leads for 24 hours, 3 days, or 7 days depending on tier.
-
-6. **Geospatial Search & Market Insights**  
-   - PostGIS integration for advanced location queries (e.g., within X miles of downtown).  
-   - Market-specific data (e.g., Dallas suburbs, Phoenix retirement communities) for better recommendations.
-
-7. **AI Recommendations**  
-   - Embedding-based system (OpenAI embeddings, Pinecone/Weaviate) to suggest leads based on user history, property similarities, and region.
+#### Dynamic Pricing
+- AI-driven price adjustments based on:
+  - Lead demand (views, cart additions, purchases)
+  - Market conditions (supply/demand, time on market)
+  - Lead quality (verified details, high ROI potential)
+- Subscription tier discounts:
+  - Basic users: Standard dynamic pricing.
+  - Pro/Enterprise users: Discounted prices.
 
 ---
 
-## 3. Goals & Success Criteria
+### 2. AI-Powered Recommendations
+#### Personalized Suggestions
+- Uses embeddings (e.g., OpenAI’s text-embedding-ada-002) for:
+  - Lead similarity matching
+  - User profile preferences (search history, purchase patterns)
+- Contextual filters (budget, location, property type).
 
-- **High Conversion**: Users purchase a large portion of recommended or searched leads.  
-- **Accurate & Clean Data**: Minimal time wasted on fraudulent or incomplete listings.  
-- **Scalability**: System can handle thousands of leads added daily across multiple markets.  
-- **Positive User Feedback**: Agents find the platform’s cart timers, dynamic pricing, and personalization valuable.
+#### Recommendation Workflow
+1. Scrape leads and generate embeddings.
+2. Store embeddings in a vector database (**Pinecone**, **Weaviate**, or **Postgres with PGVector**).
+3. Query embeddings to return the most relevant leads to users.
+
+---
+
+### 3. Multi-Tier Credit System
+#### Subscription Tiers
+- **Basic**: Higher cost per credit, limited hold times.
+- **Pro**: Reduced cost, extended holds, advanced insights.
+- **Enterprise**: Bulk discounts, priority access, API integrations.
+
+#### Credit Workflow
+1. Purchase credits via **Stripe** or **PayPal**.
+2. Deduct credits when purchasing leads.
+3. Display real-time credit balance and renewal options.
 
 ---
 
-## 4. Future Enhancements
-
-1. **Enterprise Integrations**: Sync leads with CRMs or marketing platforms.  
-2. **More Markets**: Expand beyond the initial four cities using the modular scraper architecture.  
-3. **Reinforcement Learning**: Continually refine pricing models based on purchase outcomes.  
-4. **User Behavior Analytics**: Track detailed user interactions for deeper personalization and ad targeting.
+### 4. Advanced Analytics & Insights
+- **Market Insights**: Real-time analytics for regions, pricing trends, demand heatmaps.
+- **Geospatial Analysis**: Powered by **PostGIS** for radius searches and mapping.
+- **Fraud Detection**: AI-based scoring to flag duplicate or invalid leads.
 
 ---
+
+## Technical Highlights
+
+### 1. Scraping Framework
+- Modular scrapers for targeted platforms (Zillow, Facebook, Craigslist, etc.).
+- Parsers normalize raw data into structured leads.
+
+### 2. Backend Stack
+- **FastAPI**: Lightweight, high-performance API.
+- **PostgreSQL + PostGIS**: Primary database with geospatial capabilities.
+- **Redis**: Caching and session management.
+- **Elasticsearch/OpenSearch**: Full-text and faceted search.
+- **Pinecone/Weaviate**: Vector storage for embeddings.
+
+### 3. AI Integrations
+- **LangChain**: Data cleaning, fraud detection.
+- **OpenAI**: Embedding generation for recommendations.
+
+### 4. Monitoring & Metrics
+- **Prometheus/Grafana**: Track system health, scraper success, and API response times.
+- Real-time alerts for downtime or anomalies.
+
+---
+
+## Phase 1 Goals (Complete)
+- Repository setup with core structure.
+- Initial scrapers (Zillow, Craigslist).
+- Database schema (User, Lead, Transaction, Subscription models).
+- Initial pipeline integration.
+
+## Phase 2 Objectives (In Progress)
+- Expand scraping coverage to LinkedIn, Facebook Marketplace.
+- Integrate Elasticsearch for advanced search.
+- Implement basic AI recommendations.
+- Add fraud detection and data cleaning pipeline.
+
+## Future Enhancements
+1. **Dynamic Pricing Optimization**: Continuous adjustments using real-time demand metrics.
+2. **White-Label Platform**: Provide customization for partner brokerages.
+3. **International Expansion**: Localize data scraping for non-US markets.
+4. **Marketing Automation**: Notify users about new leads matching their preferences.
+
+---
+
+## Conclusion
+The AIQLeads MVP is a scalable, AI-driven solution for real estate professionals, designed to maximize lead quality, reduce time-to-purchase, and improve decision-making through actionable insights and advanced analytics.
