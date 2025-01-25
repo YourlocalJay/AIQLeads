@@ -6,8 +6,11 @@ from typing import List, Dict, Optional, Any
 import asyncio
 import logging
 import aiohttp
+import re
 from datetime import datetime
 from urllib.parse import urljoin
+import phonenumbers
+from email_validator import validate_email, EmailNotValidError
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +137,7 @@ class CraigslistScraper(BaseScraper):
 
             # Validate and normalize contact info
             if contact_info["email"]:
-                self._validate_email(contact_info["email"])
+                contact_info["email"] = self._validate_email(contact_info["email"])
             if contact_info["phone"]:
                 contact_info["phone"] = self._normalize_phone(contact_info["phone"])
 
@@ -230,13 +233,21 @@ class CraigslistScraper(BaseScraper):
         return headers
 
     @staticmethod
-    def _validate_email(email: str) -> None:
+    def _validate_email(email: str) -> str:
         """Validate email format."""
-        # Add email validation logic here
-        pass
+        try:
+            validated_email = validate_email(email).email
+            return validated_email
+        except EmailNotValidError as e:
+            raise ParseError(f"Invalid email: {email}") from e
 
     @staticmethod
     def _normalize_phone(phone: str) -> str:
         """Normalize phone number format."""
-        # Add phone normalization logic here
-        return phone
+        try:
+            parsed_phone = phonenumbers.parse(phone, "US")  # Default region: US
+            if not phonenumbers.is_valid_number(parsed_phone):
+                raise ParseError(f"Invalid phone number: {phone}")
+            return phonenumbers.format_number(parsed_phone, phonenumbers.PhoneNumberFormat.E164)
+        except phonenumbers.NumberParseException as e:
+            raise ParseError(f"Invalid phone number: {phone}") from e
