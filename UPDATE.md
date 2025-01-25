@@ -7,6 +7,7 @@
 - Alert system integration with Slack and PagerDuty
 - Contact validation service with backup providers and caching
 - Parallel validation processing for lead data
+- Comprehensive rate limiter documentation
 
 ## In Progress
 - Data processing pipeline enhancements
@@ -28,7 +29,6 @@
    - Real-time analytics integration
 
 ## Technical Debt
-- Update documentation for rate limiters
 - Enhance error handling in API integrations
 - Optimize Redis state persistence
 - Configure alert thresholds
