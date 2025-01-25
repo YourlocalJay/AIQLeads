@@ -9,12 +9,30 @@ groups:
         labels:
           severity: warning
           team: backend
+          service: schema-validation
+          environment: production
         annotations:
           summary: High schema validation latency
           description: |
-            Schema validation latency exceeded 10ms threshold for {{ $labels.endpoint }}
-            Current value: {{ $value | printf "%.2f" }}ms
-
+            Schema validation latency exceeded 10ms threshold for {{ $labels.endpoint }}.
+            Current value: {{ $value | printf "%.2f" }}ms.
+            
+      - alert: CriticalValidationLatency
+        expr: |
+          rate(schema_validation_duration_seconds_sum[5m]) / 
+          rate(schema_validation_duration_seconds_count[5m]) * 1000 > 20
+        for: 15m
+        labels:
+          severity: critical
+          team: backend
+          service: schema-validation
+          environment: production
+        annotations:
+          summary: Critical schema validation latency
+          description: |
+            Schema validation latency exceeded 20ms threshold for {{ $labels.endpoint }}.
+            Current value: {{ $value | printf "%.2f" }}ms.
+            
       - alert: LowCacheHitRate
         expr: |
           sum(rate(schema_cache_operations_total{status="hit"}[5m])) / 
@@ -23,8 +41,90 @@ groups:
         labels:
           severity: warning
           team: backend
+          service: cache-performance
+          environment: production
         annotations:
           summary: Low cache hit rate
           description: |
-            Cache hit rate below 85% threshold
-            Current rate: {{ $value | printf "%.1f" }}%
+            Cache hit rate below 85% threshold.
+            Current rate: {{ $value | printf "%.1f" }}%.
+            
+      - alert: HighCacheMissRate
+        expr: |
+          sum(rate(schema_cache_operations_total{status="miss"}[5m])) / 
+          sum(rate(schema_cache_operations_total[5m])) * 100 > 15
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          service: cache-performance
+          environment: production
+        annotations:
+          summary: High cache miss rate
+          description: |
+            Cache miss rate exceeded 15% threshold.
+            Current rate: {{ $value | printf "%.1f" }}%.
+            
+      - alert: ResolvedValidationLatency
+        expr: |
+          rate(schema_validation_duration_seconds_sum[5m]) / 
+          rate(schema_validation_duration_seconds_count[5m]) * 1000 <= 10
+        for: 5m
+        labels:
+          severity: info
+          team: backend
+          service: schema-validation
+          environment: production
+        annotations:
+          summary: Schema validation latency resolved
+          description: |
+            Schema validation latency is back to normal for {{ $labels.endpoint }}.
+            Current value: {{ $value | printf "%.2f" }}ms.
+            
+      - alert: ResolvedCacheHitRate
+        expr: |
+          sum(rate(schema_cache_operations_total{status="hit"}[5m])) / 
+          sum(rate(schema_cache_operations_total[5m])) * 100 >= 85
+        for: 5m
+        labels:
+          severity: info
+          team: backend
+          service: cache-performance
+          environment: production
+        annotations:
+          summary: Cache hit rate resolved
+          description: |
+            Cache hit rate is back to acceptable levels (>=85%).
+            Current rate: {{ $value | printf "%.1f" }}%.
+
+  - name: NotificationConfig
+    rules:
+      - alert_relabel_configs:
+          - source_labels: [severity]
+            target_label: channel
+            replacement: '#alerts-${severity}'
+          
+          - source_labels: [service]
+            target_label: team_channel
+            replacement: '#${service}-alerts'
+
+receivers:
+  - name: 'pagerduty'
+    pagerduty_configs:
+      - routing_key: '${PAGERDUTY_KEY}'
+        severity: '{{ .GroupLabels.severity }}'
+        class: '{{ .GroupLabels.service }}'
+        group: '{{ .GroupLabels.team }}'
+        
+  - name: 'slack'
+    slack_configs:
+      - channel: '{{ .GroupLabels.channel }}'
+        username: 'Schema Monitor'
+        icon_emoji: ':chart_with_upwards_trend:'
+        title: '[{{ .GroupLabels.severity | toUpper }}] {{ .GroupLabels.alertname }}'
+        text: |-
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Service:* {{ .GroupLabels.service }}
+          *Environment:* {{ .GroupLabels.environment }}
+          *Team:* {{ .GroupLabels.team }}
