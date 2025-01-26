@@ -1,158 +1,153 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List
 from datetime import datetime
-from src.schemas.lead_schema import LeadCreate
+from tenacity import retry, stop_after_attempt, wait_exponential
+from bs4 import BeautifulSoup
 from src.aggregator.exceptions import ParseError
-from geoalchemy2.shape import to_shape
+from src.utils.validators import validate_price, validate_date, validate_email
 import logging
 
 logger = logging.getLogger(__name__)
 
 class CraigslistParser:
     """
-    Parses raw Craigslist listing data into structured LeadCreate objects.
+    Parser for Craigslist listings.
+
+    This parser processes raw HTML content from Craigslist listings and converts
+    it into structured data adhering to the Lead schema.
+
+    Attributes:
+        MARKET_ID (str): Unique identifier for the Craigslist market.
+        VERSION (str): Version of the parser.
     """
 
-    REQUIRED_FIELDS = ["title", "price", "location"]
+    MARKET_ID = "craigslist"
+    VERSION = "1.0"
 
-    def parse_listing(self, raw_data: Dict[str, Any]) -> LeadCreate:
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+    def parse_listing(self, content: str) -> Dict[str, Any]:
         """
-        Parses a single Craigslist listing.
+        Parse raw HTML content into structured lead data.
+
+        This method retries up to 3 times with exponential backoff in case of recoverable errors.
 
         Args:
-            raw_data: Raw JSON or dictionary representing a Craigslist listing.
+            content (str): Raw HTML content of a Craigslist listing.
 
         Returns:
-            LeadCreate: A validated lead object ready for database storage.
+            Dict[str, Any]: Parsed lead data with fields:
+                - title (str)
+                - price (float)
+                - location (str)
+                - posting_date (datetime)
+                - contact_info (dict)
 
         Raises:
-            ParseError: If required fields are missing or invalid.
+            ParseError: If parsing fails after retries.
         """
         try:
-            self._validate_required_fields(raw_data)
+            soup = BeautifulSoup(content, "html.parser")
 
-            title = raw_data.get("title", "").strip()
-            price = self._parse_price(raw_data.get("price"))
-            location = self._parse_location(raw_data.get("location"))
-            description = raw_data.get("description", "").strip()
-            contact_info = self._extract_contact_info(raw_data)
+            # Extract and validate title
+            title_elem = soup.select_one(".posting-title")
+            if not title_elem:
+                raise ParseError("Missing title element.")
+            title = title_elem.text.strip()
 
-            lead = LeadCreate(
-                name=title,
-                email=contact_info.get("email"),
-                phone=contact_info.get("phone"),
-                source="Craigslist",
-                metadata={
-                    "description": description,
-                    "price": price,
-                    "location": location,
-                    "posting_date": raw_data.get("posting_date"),
-                    "listing_url": raw_data.get("url"),
-                    "extracted_at": datetime.utcnow().isoformat(),
+            # Extract and validate price
+            price_elem = soup.select_one(".price")
+            price = validate_price(price_elem.text) if price_elem else None
+            if price is None:
+                raise ParseError("Invalid or missing price.")
+
+            # Extract and validate location
+            location_elem = soup.select_one(".location")
+            location = location_elem.text.strip() if location_elem else "Unknown"
+
+            # Extract and validate posting date
+            date_elem = soup.select_one(".posting-date")
+            posting_date = validate_date(date_elem["datetime"], "%Y-%m-%dT%H:%M:%S") if date_elem else None
+            if posting_date is None:
+                raise ParseError("Invalid or missing posting date.")
+
+            # Extract and validate contact information
+            contact_info = self._extract_contact_info(soup)
+
+            return {
+                "title": title,
+                "price": price,
+                "location": location,
+                "posting_date": posting_date,
+                "contact_info": contact_info,
+                "source": "Craigslist",
+                "metadata": {
+                    "parser_version": self.VERSION,
+                    "market_id": self.MARKET_ID,
+                    "parsed_at": datetime.utcnow().isoformat()
                 }
-            )
-
-            return lead
+            }
 
         except Exception as e:
-            logger.error(f"Error parsing Craigslist listing: {str(e)}")
-            raise ParseError(f"Parsing failed for Craigslist listing: {str(e)}")
+            logger.error(f"Failed to parse listing: {str(e)}", exc_info=True)
+            raise ParseError(f"Failed to parse listing: {str(e)}")
 
-    def _validate_required_fields(self, raw_data: Dict[str, Any]) -> None:
+    def _extract_contact_info(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """
-        Validates that all required fields are present in the raw data.
+        Extract contact information from the listing HTML.
 
         Args:
-            raw_data: Raw JSON or dictionary representing a Craigslist listing.
-
-        Raises:
-            ParseError: If required fields are missing.
-        """
-        missing_fields = [field for field in self.REQUIRED_FIELDS if not raw_data.get(field)]
-        if missing_fields:
-            raise ParseError(f"Missing required fields: {', '.join(missing_fields)}")
-
-    def _parse_price(self, price_str: Optional[str]) -> Optional[float]:
-        """
-        Parses the price field, converting it to a float if valid.
-
-        Args:
-            price_str: Raw price string from the listing.
+            soup (BeautifulSoup): Parsed HTML content.
 
         Returns:
-            Optional[float]: Parsed price as a float, or None if invalid.
+            Dict[str, Any]: Contact information including name, email, and phone.
 
         Raises:
-            ParseError: If the price format is invalid.
+            ParseError: If contact information cannot be extracted or validated.
         """
-        if not price_str:
-            return None
-
         try:
-            cleaned_price = price_str.replace("$", "").replace(",", "").strip()
-            return float(cleaned_price)
-        except ValueError:
-            raise ParseError(f"Invalid price format: {price_str}")
+            email_elem = soup.select_one(".reply-email")
+            phone_elem = soup.select_one(".reply-phone")
 
-    def _parse_location(self, location_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, float]]:
+            email = email_elem.text.strip() if email_elem else None
+            if email and not validate_email(email):
+                raise ParseError("Invalid email format.")
+
+            phone = phone_elem.text.strip() if phone_elem else None
+            phone = self._normalize_phone(phone) if phone else None
+
+            return {
+                "email": email,
+                "phone": phone
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to extract contact information: {str(e)}")
+            raise ParseError(f"Contact extraction failed: {str(e)}")
+
+    @staticmethod
+    def _normalize_phone(phone: str) -> str:
         """
-        Extracts and validates location coordinates.
+        Normalize phone number format.
 
         Args:
-            location_data: Dictionary containing location details (latitude and longitude).
+            phone (str): Raw phone number.
 
         Returns:
-            Optional[Dict[str, float]]: A dictionary with 'latitude' and 'longitude' keys.
-
-        Raises:
-            ParseError: If location data is missing or invalid.
+            str: Normalized phone number.
         """
-        if not location_data:
-            raise ParseError("Location data is missing.")
+        return phone.replace("(", "").replace(")", "").replace("-", "").strip()
 
-        try:
-            lat = float(location_data["latitude"])
-            lng = float(location_data["longitude"])
-            return {"latitude": lat, "longitude": lng}
-        except (KeyError, ValueError):
-            raise ParseError("Invalid location data format.")
+if __name__ == "__main__":
+    # Example usage for testing
+    sample_html = """<html><div class='posting-title'>Test Listing</div>
+    <div class='price'>$1,200</div>
+    <div class='location'>Austin, TX</div>
+    <time class='posting-date' datetime='2025-01-25T14:30:00'></time>
+    <div class='reply-email'>test@example.com</div>
+    <div class='reply-phone'>(123) 456-7890</div></html>"""
 
-    def _extract_contact_info(self, raw_data: Dict[str, Any]) -> Dict[str, Optional[str]]:
-        """
-        Extracts contact information from the listing data.
-
-        Args:
-            raw_data: Raw JSON or dictionary representing a Craigslist listing.
-
-        Returns:
-            Dict[str, Optional[str]]: A dictionary containing 'email' and 'phone'.
-
-        Raises:
-            ParseError: If contact information is missing or invalid.
-        """
-        contact_info = {
-            "email": raw_data.get("contact_email"),
-            "phone": raw_data.get("contact_phone"),
-        }
-
-        if not contact_info["email"] and not contact_info["phone"]:
-            raise ParseError("Contact information is missing.")
-
-        return contact_info
-
-    def validate_lead(self, lead: LeadCreate) -> bool:
-        """
-        Validates a LeadCreate object for completeness and correctness.
-
-        Args:
-            lead: The LeadCreate object to validate.
-
-        Returns:
-            bool: True if the lead is valid.
-
-        Raises:
-            ParseError: If validation fails.
-        """
-        if not lead.name or not lead.metadata.get("price") or not lead.metadata.get("location"):
-            raise ParseError("Lead validation failed: Missing critical fields.")
-
-        return True
+    parser = CraigslistParser()
+    try:
+        parsed_data = parser.parse_listing(sample_html)
+        print(parsed_data)
+    except ParseError as e:
+        print(f"Error: {e}")
