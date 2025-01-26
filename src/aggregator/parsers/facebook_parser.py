@@ -92,7 +92,7 @@ class FacebookParser:
             raise ParseError(f"Lead extraction error: {e}")
 
     @staticmethod
-    def _parse_price(price_str: str) -> float:
+    def _parse_price(price_str: str) -> Optional[float]:
         """
         Parse and validate the price string.
 
@@ -100,7 +100,7 @@ class FacebookParser:
             price_str (str): Raw price string.
 
         Returns:
-            float: The parsed price.
+            Optional[float]: The parsed price.
 
         Raises:
             ParseError: If the price cannot be parsed or is invalid.
