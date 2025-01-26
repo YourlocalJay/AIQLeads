@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional
+from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
 import re
 from datetime import datetime
