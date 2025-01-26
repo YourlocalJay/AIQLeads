@@ -1,152 +1,242 @@
-from typing import Dict, Any, List, Optional
+"""
+FSBO (For Sale By Owner) parser with enhanced validation and optimization.
+"""
+
+from typing import Dict, Any, Optional, List
 from datetime import datetime
-from src.schemas.lead_schema import LeadCreate
-from src.aggregator.exceptions import ParseError
-from geoalchemy2 import functions as geo_func
-import re
 import logging
+from geoalchemy2.elements import WKTElement
+from src.schemas.lead_schema import LeadCreate
+from src.aggregator.parsers.base_parser import BaseParser
+from src.aggregator.exceptions import ParseError
+from src.utils.validators import validate_email, validate_phone, validate_price
+from src.utils.optimization import ResultCache
+from src.utils.performance import PerformanceOptimizer
 
 logger = logging.getLogger(__name__)
 
-class FSBOParser:
+class FSBOParser(BaseParser):
     """
-    Parser for FSBO.com listings with advanced validation, geospatial compatibility,
-    and fraud detection for high-quality data ingestion.
+    Optimized parser for FSBO listings with enhanced validation
+    and performance monitoring.
     """
 
+    MARKET_ID = "fsbo"
+    VERSION = "2.1"
+    
     def __init__(self):
-        self.price_pattern = re.compile(r"\$?([\d,]+(?:\.\d{2})?)")
-        self.phone_pattern = re.compile(r"\(\d{3}\) \d{3}-\d{4}")
+        super().__init__()
+        self.result_cache = ResultCache(ttl_seconds=1800)
+        self.performance_optimizer = PerformanceOptimizer()
 
-    def parse_listing(self, content: Dict[str, Any]) -> LeadCreate:
-        """
-        Parse a single FSBO listing into a validated LeadCreate instance.
+    async def parse_async(self, data: Dict[str, Any]) -> LeadCreate:
+        """Parse FSBO listing with performance monitoring."""
+        return await self.performance_optimizer.optimize_operation(
+            'fsbo_parse',
+            self._parse_listing,
+            data
+        )
 
-        Args:
-            content (Dict[str, Any]): Raw listing data from FSBO.
-
-        Returns:
-            LeadCreate: Validated lead data.
-
-        Raises:
-            ParseError: If parsing or validation fails.
-        """
+    async def _parse_listing(self, data: Dict[str, Any]) -> LeadCreate:
+        """Core parsing logic with optimization."""
         try:
-            logger.info("Parsing FSBO listing...")
+            cache_key = f"fsbo_{data.get('id')}_{self.VERSION}"
+            cached_result = await self.result_cache.get(cache_key)
+            if cached_result:
+                return cached_result
 
-            title = self._extract_title(content)
-            price = self._extract_price(content)
-            location = self._extract_location(content)
-            contact = self._extract_contact_info(content)
-
+            listing_id = data.get('id')
+            contact = await self._extract_contact_info(data)
+            location = self._extract_location(data)
+            price = self._extract_price(data)
+            property_details = self._extract_property_details(data)
+            
             metadata = {
-                "url": content.get("url"),
-                "listing_date": content.get("listing_date"),
-                "property_type": content.get("property_type"),
-                "sqft": content.get("sqft"),
-                "bedrooms": content.get("bedrooms"),
-                "bathrooms": content.get("bathrooms"),
+                "price": price,
+                "property_details": property_details,
+                "listing_date": data.get("created_at"),
+                "last_updated": data.get("updated_at"),
+                "verification_score": await self._calculate_verification_score(data),
+                "source_platform": data.get("source_platform"),
+                "extracted_at": datetime.utcnow().isoformat(),
+                "parser_version": self.VERSION,
+                "property_features": self._extract_property_features(data),
+                "seller_motivation": self._analyze_seller_motivation(data)
             }
 
             lead = LeadCreate(
-                name=contact["name"],
-                email=contact["email"],
-                phone=contact["phone"],
-                price=price,
+                source_id=listing_id,
+                market=self.MARKET_ID,
+                contact_name=contact.get("name", "Owner"),
+                email=contact.get("email"),
+                phone=contact.get("phone"),
+                company_name="FSBO",
                 location=location,
-                source="FSBO",
-                metadata=metadata,
+                metadata=metadata
             )
 
-            self._validate_lead(lead)
-            logger.info(f"Parsed lead: {lead}")
-
+            await self._validate_lead(lead)
+            await self.result_cache.set(cache_key, lead)
             return lead
 
         except Exception as e:
-            logger.error(f"Failed to parse FSBO listing: {str(e)}", exc_info=True)
+            logger.error(f"Failed to parse FSBO listing {data.get('id')}: {e}", exc_info=True)
             raise ParseError(f"Failed to parse FSBO listing: {str(e)}")
 
-    def _extract_title(self, content: Dict[str, Any]) -> str:
-        title = content.get("title", "").strip()
-        if not title:
-            raise ParseError("Missing title in FSBO listing.")
-        return title
+    def _extract_location(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and validate location data."""
+        try:
+            location_data = data.get('location', {})
+            lat = location_data.get('latitude')
+            lon = location_data.get('longitude')
 
-    def _extract_price(self, content: Dict[str, Any]) -> float:
-        price_raw = content.get("price")
-        if not price_raw:
-            raise ParseError("Missing price in FSBO listing.")
+            if not (lat and lon):
+                raise ValueError("Missing coordinates")
 
-        match = self.price_pattern.search(price_raw)
-        if not match:
-            raise ParseError("Invalid price format.")
+            return {
+                "coordinates": WKTElement(f"POINT({lon} {lat})", srid=4326),
+                "street_address": location_data.get('street_address'),
+                "unit": location_data.get('unit'),
+                "city": location_data.get('city'),
+                "state": location_data.get('state'),
+                "postal_code": location_data.get('postal_code'),
+                "raw_data": location_data
+            }
 
-        return float(match.group(1).replace(",", ""))
+        except Exception as e:
+            logger.warning(f"Location extraction failed: {e}")
+            raise ParseError(f"Invalid location data: {str(e)}")
 
-    def _extract_location(self, content: Dict[str, Any]) -> Dict[str, Any]:
-        location_data = content.get("location")
-        if not location_data:
-            raise ParseError("Missing location in FSBO listing.")
+    def _extract_price(self, data: Dict[str, Any]) -> Optional[float]:
+        """Extract and validate price information."""
+        try:
+            price_data = data.get('price', {})
+            amount = price_data.get('amount')
+            
+            if not amount:
+                return None
+                
+            return validate_price(amount)
+            
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Price extraction failed: {e}")
+            return None
 
-        if not location_data.get("latitude") or not location_data.get("longitude"):
-            raise ParseError("Incomplete geospatial data.")
-
+    def _extract_property_details(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract comprehensive property details."""
+        property_data = data.get('property', {})
         return {
-            "latitude": float(location_data["latitude"]),
-            "longitude": float(location_data["longitude"]),
+            "type": property_data.get("property_type"),
+            "bedrooms": property_data.get("bedrooms"),
+            "bathrooms": property_data.get("bathrooms"),
+            "square_feet": property_data.get("square_feet"),
+            "lot_size": property_data.get("lot_size"),
+            "year_built": property_data.get("year_built"),
+            "zoning": property_data.get("zoning"),
+            "parking": property_data.get("parking"),
+            "construction_type": property_data.get("construction_type")
         }
 
-    def _extract_contact_info(self, content: Dict[str, Any]) -> Dict[str, str]:
-        contact = {
-            "name": content.get("contact_name", "").strip(),
-            "email": content.get("contact_email"),
-            "phone": content.get("contact_phone"),
+    def _extract_property_features(self, data: Dict[str, Any]) -> List[str]:
+        """Extract and normalize property features."""
+        features = data.get('property', {}).get('features', [])
+        return [feature.lower().strip() for feature in features if feature]
+
+    def _analyze_seller_motivation(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze seller motivation factors."""
+        description = data.get('description', '').lower()
+        motivation_indicators = {
+            "urgent_sale": any(term in description for term in ["urgent", "quick sale", "must sell"]),
+            "relocation": any(term in description for term in ["relocating", "moving", "transfer"]),
+            "investment": any(term in description for term in ["investment", "rental", "income"]),
+            "renovation": any(term in description for term in ["as-is", "fixer", "needs work"])
+        }
+        
+        days_on_market = data.get('days_on_market', 0)
+        price_changes = data.get('price_history', [])
+        
+        return {
+            "indicators": motivation_indicators,
+            "days_on_market": days_on_market,
+            "price_changes": len(price_changes),
+            "motivation_score": self._calculate_motivation_score(
+                motivation_indicators,
+                days_on_market,
+                price_changes
+            )
         }
 
-        if not contact["name"]:
-            raise ParseError("Missing contact name.")
+    def _calculate_motivation_score(
+        self,
+        indicators: Dict[str, bool],
+        days_on_market: int,
+        price_changes: List[Any]
+    ) -> float:
+        """Calculate seller motivation score."""
+        score = 0.0
+        
+        # Indicator scoring
+        score += sum(20.0 for indicator in indicators.values() if indicator)
+        
+        # Time on market scoring
+        if days_on_market > 90:
+            score += 25.0
+        elif days_on_market > 60:
+            score += 15.0
+        elif days_on_market > 30:
+            score += 10.0
+            
+        # Price change scoring
+        if len(price_changes) >= 2:
+            score += 25.0
+        elif len(price_changes) == 1:
+            score += 15.0
+            
+        return min(score, 100.0)
 
-        if not contact["email"] and not contact["phone"]:
-            raise ParseError("At least one contact method (email or phone) is required.")
+    async def _calculate_verification_score(self, data: Dict[str, Any]) -> float:
+        """Calculate listing verification score."""
+        score = 100.0
+        deductions = []
 
-        if contact["phone"] and not self.phone_pattern.match(contact["phone"]):
-            raise ParseError("Invalid phone number format.")
+        # Contact verification
+        if not (data.get('owner', {}).get('email') or data.get('owner', {}).get('phone')):
+            deductions.append(30.0)
 
-        return contact
+        # Property details completeness
+        property_data = data.get('property', {})
+        if not all([
+            property_data.get('property_type'),
+            property_data.get('square_feet'),
+            property_data.get('bedrooms')
+        ]):
+            deductions.append(20.0)
 
-    def _validate_lead(self, lead: LeadCreate) -> None:
-        """
-        Perform additional validation on the parsed lead.
+        # Image verification
+        if not data.get('images', []):
+            deductions.append(15.0)
 
-        Args:
-            lead (LeadCreate): Parsed lead.
+        # Location verification
+        if not data.get('location', {}).get('coordinates'):
+            deductions.append(20.0)
 
-        Raises:
-            ParseError: If validation fails.
-        """
-        if lead.price <= 0:
-            raise ParseError("Lead price must be greater than zero.")
+        # Description quality
+        description = data.get('description', '')
+        if len(description) < 100:
+            deductions.append(15.0)
 
-        if not (-90 <= lead.location["latitude"] <= 90 and -180 <= lead.location["longitude"] <= 180):
-            raise ParseError("Invalid geospatial coordinates.")
+        return max(0.0, score - sum(deductions))
 
-    def parse_multiple_listings(self, listings: List[Dict[str, Any]]) -> List[LeadCreate]:
-        """
-        Parse multiple FSBO listings into a list of LeadCreate instances.
+    async def _validate_lead(self, lead: LeadCreate) -> None:
+        """Perform comprehensive lead validation."""
+        if not lead.source_id:
+            raise ParseError("Missing listing ID")
 
-        Args:
-            listings (List[Dict[str, Any]]): List of raw listing data.
+        if not lead.location:
+            raise ParseError("Invalid location data")
 
-        Returns:
-            List[LeadCreate]: Parsed leads.
-        """
-        parsed_leads = []
-        for listing in listings:
-            try:
-                lead = self.parse_listing(listing)
-                parsed_leads.append(lead)
-            except ParseError as e:
-                logger.warning(f"Skipping invalid listing: {str(e)}")
-                continue
-        return parsed_leads
+        if lead.metadata.get('verification_score', 0) < 40:
+            raise ParseError("Lead failed verification checks")
+
+        if not (lead.email or lead.phone):
+            raise ParseError("No valid contact methods")
