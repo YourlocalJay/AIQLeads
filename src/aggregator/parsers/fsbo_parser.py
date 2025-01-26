@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 from src.schemas.lead_schema import LeadCreate
 from src.aggregator.exceptions import ParseError
@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 class FSBOParser:
     """
-    Parser for FSBO.com listings with advanced validation and fraud detection.
+    Parser for FSBO.com listings with advanced validation, geospatial compatibility,
+    and fraud detection for high-quality data ingestion.
     """
 
     def __init__(self):
