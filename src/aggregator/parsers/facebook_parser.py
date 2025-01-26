@@ -1,122 +1,145 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
+from bs4 import BeautifulSoup
+import re
+import logging
 from src.schemas.lead_schema import LeadCreate
 from src.aggregator.exceptions import ParseError
-from bs4 import BeautifulSoup
-import logging
+from src.utils.validators import validate_email, validate_phone
 
 logger = logging.getLogger(__name__)
 
 class FacebookParser:
     """
-    Parser for Facebook Marketplace property listings with robust validation
-    and normalization logic.
+    Parser for Facebook Marketplace listings with advanced validation and error handling.
     """
 
-    @staticmethod
-    def parse_listing(raw_html: str) -> List[LeadCreate]:
+    MARKET_ID = "facebook"
+    VERSION = "1.1.0"
+
+    def __init__(self):
+        self.price_pattern = re.compile(r"\$?([\d,]+(?:\.\d{2})?)")
+        self.phone_pattern = re.compile(r"\(\d{3}\) \d{3}-\d{4}")
+
+    def parse_listing(self, content: str) -> LeadCreate:
         """
-        Parse raw HTML content from Facebook Marketplace into structured leads.
+        Parse a single Facebook Marketplace listing into a validated LeadCreate instance.
 
         Args:
-            raw_html (str): The raw HTML content of the Facebook Marketplace page.
+            content (str): Raw HTML content of the listing.
 
         Returns:
-            List[LeadCreate]: A list of parsed and validated leads.
+            LeadCreate: Validated lead data.
 
         Raises:
-            ParseError: If the HTML parsing or lead extraction fails.
+            ParseError: If parsing or validation fails.
         """
         try:
-            soup = BeautifulSoup(raw_html, "html.parser")
-            leads = []
+            logger.info("Parsing Facebook Marketplace listing...")
+            soup = BeautifulSoup(content, "html.parser")
 
-            for item in soup.select("div[data-testid='marketplace_listing']"):
-                try:
-                    lead = FacebookParser._extract_lead(item)
-                    leads.append(lead)
-                except ParseError as e:
-                    logger.warning(f"Skipping invalid listing: {e}")
-                    continue
+            title = self._extract_title(soup)
+            price = self._extract_price(soup)
+            location = self._extract_location(soup)
+            contact = self._extract_contact_info(soup)
 
-            if not leads:
-                raise ParseError("No valid leads found in the provided HTML.")
+            metadata = {
+                "market": self.MARKET_ID,
+                "parser_version": self.VERSION,
+                "extracted_at": datetime.utcnow().isoformat(),
+            }
 
-            return leads
-
-        except Exception as e:
-            logger.error(f"Failed to parse Facebook Marketplace listings: {e}")
-            raise ParseError(f"FacebookParser error: {e}")
-
-    @staticmethod
-    def _extract_lead(item: Any) -> LeadCreate:
-        """
-        Extract a single lead from a Facebook Marketplace listing.
-
-        Args:
-            item (Any): The HTML element containing the listing details.
-
-        Returns:
-            LeadCreate: The extracted and validated lead.
-
-        Raises:
-            ParseError: If critical fields are missing or invalid.
-        """
-        try:
-            title_elem = item.select_one("span[dir='auto']")
-            price_elem = item.select_one("div[aria-label*='$']")
-            location_elem = item.select_one("div[aria-label*='Located in']")
-            url_elem = item.select_one("a")
-
-            title = title_elem.text.strip() if title_elem else None
-            price = FacebookParser._parse_price(price_elem.text if price_elem else None)
-            location = location_elem.text.strip() if location_elem else None
-            url = "https://www.facebook.com" + url_elem["href"] if url_elem else None
-
-            if not title or not url:
-                raise ParseError("Missing required fields: title or URL.")
-
-            return LeadCreate(
-                name=title,
+            lead = LeadCreate(
+                name=contact["name"],
+                email=contact.get("email"),
+                phone=contact.get("phone"),
                 price=price,
-                source="Facebook Marketplace",
-                metadata={
-                    "location": location,
-                    "listing_url": url,
-                    "extracted_at": datetime.utcnow().isoformat()
-                }
+                location=location,
+                source="Facebook",
+                metadata=metadata,
             )
 
-        except Exception as e:
-            logger.error(f"Failed to extract lead: {e}")
-            raise ParseError(f"Lead extraction error: {e}")
+            self._validate_lead(lead)
+            logger.info(f"Parsed lead: {lead}")
 
-    @staticmethod
-    def _parse_price(price_str: str) -> Optional[float]:
+            return lead
+
+        except Exception as e:
+            logger.error(f"Failed to parse Facebook listing: {str(e)}", exc_info=True)
+            raise ParseError(f"Failed to parse Facebook listing: {str(e)}")
+
+    def _extract_title(self, soup: BeautifulSoup) -> str:
+        title_elem = soup.select_one(".title")
+        if not title_elem:
+            raise ParseError("Missing title element.")
+        return title_elem.text.strip()
+
+    def _extract_price(self, soup: BeautifulSoup) -> Optional[float]:
+        price_elem = soup.select_one(".price")
+        if not price_elem:
+            raise ParseError("Missing price element.")
+
+        match = self.price_pattern.search(price_elem.text)
+        if not match:
+            raise ParseError("Invalid price format.")
+
+        return float(match.group(1).replace(",", ""))
+
+    def _extract_location(self, soup: BeautifulSoup) -> Dict[str, Any]:
+        location_elem = soup.select_one(".location")
+        if not location_elem:
+            raise ParseError("Missing location element.")
+
+        location_text = location_elem.text.strip()
+        return {"address": location_text}
+
+    def _extract_contact_info(self, soup: BeautifulSoup) -> Dict[str, str]:
+        contact = {
+            "name": soup.select_one(".contact-name").text.strip() if soup.select_one(".contact-name") else "Unknown",
+            "email": soup.select_one(".contact-email").text.strip() if soup.select_one(".contact-email") else None,
+            "phone": soup.select_one(".contact-phone").text.strip() if soup.select_one(".contact-phone") else None,
+        }
+
+        if contact["email"] and not validate_email(contact["email"]):
+            raise ParseError("Invalid email format.")
+
+        if contact["phone"] and not validate_phone(contact["phone"]):
+            raise ParseError("Invalid phone number format.")
+
+        return contact
+
+    def _validate_lead(self, lead: LeadCreate) -> None:
         """
-        Parse and validate the price string.
+        Perform additional validation on the parsed lead.
 
         Args:
-            price_str (str): Raw price string.
-
-        Returns:
-            Optional[float]: The parsed price.
+            lead (LeadCreate): Parsed lead.
 
         Raises:
-            ParseError: If the price cannot be parsed or is invalid.
+            ParseError: If validation fails.
         """
-        try:
-            if not price_str:
-                return None
+        if not lead.price or lead.price <= 0:
+            raise ParseError("Lead price must be greater than zero.")
 
-            price_str = price_str.replace("$", "").replace(",", "").strip()
-            price = float(price_str)
+        if not lead.location or not lead.location.get("address"):
+            raise ParseError("Location data is missing or incomplete.")
 
-            if price <= 0:
-                raise ValueError("Price must be greater than zero.")
+    def parse_multiple_listings(self, listings: List[str]) -> List[LeadCreate]:
+        """
+        Parse multiple Facebook listings into a list of LeadCreate instances.
 
-            return price
+        Args:
+            listings (List[str]): List of raw HTML content strings.
 
-        except ValueError as e:
-            logger.warning(f"Invalid price format: {price_str}")
-            raise ParseError(f"Price parsing error: {e}")
+        Returns:
+            List[LeadCreate]: Parsed leads.
+        """
+        parsed_leads = []
+        for content in listings:
+            try:
+                lead = self.parse_listing(content)
+                parsed_leads.append(lead)
+            except ParseError as e:
+                logger.warning(f"Skipping invalid listing: {str(e)}")
+                continue
+        return parsed_leads
