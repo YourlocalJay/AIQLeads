@@ -1,93 +1,179 @@
+"""
+Test suite for the Facebook Marketplace parser implementation.
+"""
+
 import pytest
-from src.aggregator.parsers.facebook_parser import FacebookParser
-from src.models.lead import Lead
 from datetime import datetime
+from unittest.mock import Mock, patch
+from geoalchemy2.elements import WKTElement
+from src.aggregator.parsers.facebook_parser import FacebookParser
+from src.aggregator.exceptions import ParseError
+from src.schemas.lead_schema import LeadCreate
 
 @pytest.fixture
-def facebook_parser():
+def parser():
+    """Provide a fresh parser instance for each test."""
     return FacebookParser()
 
 @pytest.fixture
-def sample_facebook_data():
+def valid_listing_data():
+    """Provide sample valid listing data."""
     return {
+        "id": "fb-123456789",
         "listing": {
-            "location": {
-                "address": "456 Market St, City, State 12345",
-                "coordinates": {
-                    "latitude": 37.7749,
-                    "longitude": -122.4194
-                }
-            },
             "price": {
-                "amount": 750000,
+                "amount": 425000,
                 "currency": "USD"
             },
-            "propertyDetails": {
-                "bedrooms": 4,
-                "bathrooms": 3,
-                "squareFeet": 2500,
-                "yearBuilt": 1995
+            "propertyType": "House",
+            "datePosted": "2025-01-20T15:30:00Z",
+            "location": {
+                "latitude": 33.4484,
+                "longitude": -112.0740,
+                "address": {
+                    "city": "Phoenix",
+                    "state": "AZ",
+                    "zipCode": "85001"
+                }
             },
-            "listingDate": "2025-01-20T15:30:00Z"
+            "seller": {
+                "name": "Alice Johnson",
+                "id": "fb-seller-123",
+                "contactInfo": {
+                    "phone": "555-0123",
+                    "email": "alice.j@email.com"
+                }
+            }
+        },
+        "engagement": {
+            "views": 150,
+            "saves": 25,
+            "inquiries": 10
         }
     }
 
-def test_parse_valid_listing(facebook_parser, sample_facebook_data):
-    """Test parsing of a valid Facebook Marketplace listing"""
-    lead = facebook_parser.parse(sample_facebook_data)
+@pytest.mark.asyncio
+async def test_parse_valid_listing(parser, valid_listing_data):
+    """Test parsing of a valid Facebook Marketplace listing."""
+    result = await parser.parse_async(valid_listing_data)
     
-    assert isinstance(lead, Lead)
-    assert lead.address == "456 Market St, City, State 12345"
-    assert lead.price == 750000
-    assert lead.bedrooms == 4
-    assert lead.bathrooms == 3
-    assert lead.square_feet == 2500
-    assert lead.year_built == 1995
-    assert lead.source == "facebook"
-    assert lead.latitude == 37.7749
-    assert lead.longitude == -122.4194
-    assert isinstance(lead.created_at, datetime)
+    assert isinstance(result, LeadCreate)
+    assert result.source_id == "fb-123456789"
+    assert result.market == "facebook"
+    assert result.contact_name == "Alice Johnson"
+    assert result.email == "alice.j@email.com"
+    assert result.phone == "555-0123"
+    assert isinstance(result.metadata, dict)
+    assert result.metadata["property_type"] == "House"
+    assert result.metadata["price"] == 425000
+    assert result.metadata["engagement_metrics"]["views"] == 150
 
-def test_handle_nested_missing_fields(facebook_parser):
-    """Test handling of missing nested fields"""
-    partial_data = {
+@pytest.mark.asyncio
+async def test_missing_price(parser, valid_listing_data):
+    """Test handling of missing price information."""
+    del valid_listing_data["listing"]["price"]
+    
+    with pytest.raises(ParseError, match="Missing or invalid price data"):
+        await parser.parse_async(valid_listing_data)
+
+@pytest.mark.asyncio
+async def test_invalid_location(parser, valid_listing_data):
+    """Test handling of invalid location data."""
+    valid_listing_data["listing"]["location"]["latitude"] = None
+    
+    with pytest.raises(ParseError, match="Invalid location data"):
+        await parser.parse_async(valid_listing_data)
+
+@pytest.mark.asyncio
+async def test_engagement_metrics(parser, valid_listing_data):
+    """Test proper handling of engagement metrics."""
+    result = await parser.parse_async(valid_listing_data)
+    
+    assert result.metadata["engagement_metrics"]["views"] == 150
+    assert result.metadata["engagement_metrics"]["saves"] == 25
+    assert result.metadata["engagement_metrics"]["inquiries"] == 10
+
+@pytest.mark.asyncio
+async def test_missing_seller_info(parser, valid_listing_data):
+    """Test handling of missing seller information."""
+    del valid_listing_data["listing"]["seller"]
+    
+    with pytest.raises(ParseError, match="Missing seller information"):
+        await parser.parse_async(valid_listing_data)
+
+@pytest.mark.asyncio
+async def test_invalid_contact_info(parser, valid_listing_data):
+    """Test handling of invalid contact information."""
+    valid_listing_data["listing"]["seller"]["contactInfo"] = {
+        "phone": "invalid-phone",
+        "email": "invalid-email"
+    }
+    
+    with pytest.raises(ParseError, match="No valid contact methods"):
+        await parser.parse_async(valid_listing_data)
+
+@pytest.mark.asyncio
+async def test_location_extraction(parser):
+    """Test proper extraction of location data."""
+    location_data = {
         "listing": {
             "location": {
-                "address": "456 Market St"
-            },
-            "price": {
-                "amount": 750000
+                "latitude": 33.4484,
+                "longitude": -112.0740,
+                "address": {
+                    "city": "Phoenix",
+                    "state": "AZ",
+                    "zipCode": "85001"
+                }
             }
         }
     }
     
-    lead = facebook_parser.parse(partial_data)
-    assert lead.address == "456 Market St"
-    assert lead.price == 750000
-    assert lead.bedrooms is None
-    assert lead.latitude is None
+    result = parser._extract_location(location_data["listing"])
+    assert isinstance(result["coordinates"], WKTElement)
+    assert result["coordinates"].data == "POINT(-112.0740 33.4484)"
+    assert result["raw_data"]["city"] == "Phoenix"
 
-def test_handle_malformed_data(facebook_parser):
-    """Test handling of malformed data structure"""
-    invalid_data = {
-        "listing": "malformed_string_instead_of_object"
+@pytest.mark.asyncio
+async def test_high_engagement_score(parser, valid_listing_data):
+    """Test calculation of high engagement score."""
+    valid_listing_data["engagement"] = {
+        "views": 500,
+        "saves": 100,
+        "inquiries": 50
     }
     
-    with pytest.raises(ValueError):
-        facebook_parser.parse(invalid_data)
+    result = await parser.parse_async(valid_listing_data)
+    assert result.metadata["engagement_score"] > 0.8
 
-def test_price_currency_conversion(facebook_parser):
-    """Test handling of different currencies"""
-    data_with_different_currency = {
-        "listing": {
-            "location": {"address": "Test Address"},
-            "price": {
-                "amount": 1000000,
-                "currency": "CAD"
-            }
-        }
+@pytest.mark.asyncio
+async def test_low_engagement_score(parser, valid_listing_data):
+    """Test calculation of low engagement score."""
+    valid_listing_data["engagement"] = {
+        "views": 10,
+        "saves": 1,
+        "inquiries": 0
     }
     
-    lead = facebook_parser.parse(data_with_different_currency)
-    assert lead.price is not None
-    assert isinstance(lead.price, (int, float))
+    result = await parser.parse_async(valid_listing_data)
+    assert result.metadata["engagement_score"] < 0.3
+
+@pytest.mark.asyncio
+async def test_listing_age_calculation(parser, valid_listing_data):
+    """Test calculation of listing age."""
+    result = await parser.parse_async(valid_listing_data)
+    assert "listing_age_days" in result.metadata
+    assert isinstance(result.metadata["listing_age_days"], int)
+
+def test_version_check(parser):
+    """Verify parser version is correctly set."""
+    assert parser.VERSION == "2.0"
+    assert parser.MARKET_ID == "facebook"
+
+@pytest.mark.asyncio
+async def test_price_normalization(parser, valid_listing_data):
+    """Test price normalization across different currencies."""
+    valid_listing_data["listing"]["price"]["currency"] = "EUR"
+    result = await parser.parse_async(valid_listing_data)
+    assert "original_currency" in result.metadata
+    assert result.metadata["original_currency"] == "EUR"
