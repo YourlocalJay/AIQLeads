@@ -1,150 +1,165 @@
-from typing import List, Dict, Any
+from typing import Dict, Any, List, Optional
 from bs4 import BeautifulSoup
+from geoalchemy2 import WKTElement
+from shapely.geometry import Point
 from datetime import datetime
-from decimal import Decimal
+import logging
 from src.schemas.lead_schema import LeadCreate
-from src.aggregator.parsers.base import BaseParser
+from src.aggregator.parsers.base_parser import BaseParser
 from src.aggregator.exceptions import ParseError
-import re
+from src.utils.validators import validate_email, validate_phone
+
+logger = logging.getLogger(__name__)
 
 class PhoenixParser(BaseParser):
     """
-    Parser for Phoenix real estate leads with advanced validation,
-    fraud detection, and geospatial handling.
+    Parser for Phoenix real estate listings, with advanced validation, geospatial handling,
+    and fraud detection mechanisms.
     """
 
     MARKET_ID = "phoenix"
-    VERSION = "1.0"
+    VERSION = "1.1"
 
-    def __init__(self):
-        super().__init__()
-        self.price_pattern = re.compile(r'\$?([\d,]+(?:\.\d{2})?)')
-        self.location_pattern = re.compile(r'(Phoenix|Scottsdale|Mesa|Tempe|Chandler|Gilbert|Glendale)')
-        self.sqft_pattern = re.compile(r'(\d{1,3}(?:,\d{3})*|\d+)\s*(?:sq\.?\s*ft|sqft|SF)', re.IGNORECASE)
-
-    async def parse(self, content: str) -> List[LeadCreate]:
+    def parse_listing(self, content: str) -> LeadCreate:
         """
-        Parse raw HTML content into structured Lead objects.
+        Parse raw listing content into a validated LeadCreate schema.
 
         Args:
-            content (str): Raw HTML content from the scraped page.
+            content (str): Raw HTML content of the listing.
 
         Returns:
-            List[LeadCreate]: List of validated lead objects.
+            LeadCreate: Parsed lead schema.
 
         Raises:
-            ParseError: If parsing fails or required fields are missing.
+            ParseError: If parsing fails or fields are invalid.
         """
         try:
-            soup = BeautifulSoup(content, 'html.parser')
-            listings = []
+            logger.info("Parsing Phoenix listing...")
+            soup = BeautifulSoup(content, "html.parser")
 
-            for listing in soup.select(".listing-card"):
-                try:
-                    lead = self._parse_listing(listing)
-                    listings.append(lead)
-                except ParseError as e:
-                    self.log_warning(f"Failed to parse listing: {str(e)}")
-
-            return listings
-
-        except Exception as e:
-            raise ParseError(f"Failed to parse Phoenix listings: {str(e)}")
-
-    def _parse_listing(self, listing: Any) -> LeadCreate:
-        """
-        Extract and validate fields from an individual listing.
-
-        Args:
-            listing (Any): BeautifulSoup tag representing a single listing.
-
-        Returns:
-            LeadCreate: Validated lead object.
-
-        Raises:
-            ParseError: If required fields are missing or invalid.
-        """
-        try:
-            title = self._extract_title(listing)
-            price = self._parse_price(listing)
-            location = self._extract_location(listing)
-            sqft = self._parse_sqft(listing)
-            bedrooms = self._extract_bedrooms(listing)
-            bathrooms = self._extract_bathrooms(listing)
-            listing_url = self._extract_url(listing)
+            title = self._extract_title(soup)
+            price = self._extract_price(soup)
+            location = self._extract_location(soup)
+            contact = self._extract_contact_info(soup)
+            metadata = self._extract_metadata(soup)
 
             lead = LeadCreate(
-                name=title,
-                email=None,  # Email not provided for Phoenix leads
-                phone=None,  # Phone extraction handled downstream if available
+                name=contact.get("name", "Unknown"),
+                email=contact.get("email"),
+                phone=contact.get("phone"),
+                price=price,
+                location=location,
                 source="Phoenix",
-                metadata={
-                    "price": price,
-                    "location": location,
-                    "sqft": sqft,
-                    "bedrooms": bedrooms,
-                    "bathrooms": bathrooms,
-                    "listing_url": listing_url,
-                    "market_id": self.MARKET_ID,
-                    "version": self.VERSION,
-                    "extracted_at": datetime.utcnow().isoformat()
-                }
+                metadata=metadata,
             )
+
+            self._validate_lead(lead)
+            logger.info(f"Successfully parsed lead: {lead}")
+
             return lead
-
         except Exception as e:
-            raise ParseError(f"Error extracting listing data: {str(e)}")
+            logger.error(f"Failed to parse Phoenix listing: {str(e)}", exc_info=True)
+            raise ParseError(f"Failed to parse Phoenix listing: {str(e)}")
 
-    def _extract_title(self, listing: Any) -> str:
-        """Extract the title of the listing."""
-        title_elem = listing.select_one(".title, h2.title")
+    def _extract_title(self, soup: BeautifulSoup) -> str:
+        title_elem = soup.select_one(".listing-title")
         if not title_elem:
             raise ParseError("Missing title element.")
         return title_elem.text.strip()
 
-    def _parse_price(self, listing: Any) -> Optional[float]:
-        """Extract and parse the price of the listing."""
-        price_elem = listing.select_one(".price")
+    def _extract_price(self, soup: BeautifulSoup) -> Optional[float]:
+        price_elem = soup.select_one(".price")
         if not price_elem:
-            return None
-        match = self.price_pattern.search(price_elem.text)
-        if not match:
-            return None
-        return float(Decimal(match.group(1).replace(",", "")))
+            raise ParseError("Missing price element.")
+        try:
+            return float(price_elem.text.replace("$", "").replace(",", "").strip())
+        except ValueError:
+            raise ParseError("Invalid price format.")
 
-    def _extract_location(self, listing: Any) -> str:
-        """Extract the location of the listing."""
-        location_elem = listing.select_one(".location")
-        if not location_elem:
-            raise ParseError("Missing location element.")
-        location_text = location_elem.text.strip()
-        if not self.location_pattern.search(location_text):
-            raise ParseError("Invalid or unsupported location.")
-        return location_text
+    def _extract_location(self, soup: BeautifulSoup) -> Dict[str, Any]:
+        location_elem = soup.select_one(".location")
+        lat_elem = soup.select_one(".latitude")
+        lng_elem = soup.select_one(".longitude")
 
-    def _parse_sqft(self, listing: Any) -> Optional[int]:
-        """Extract and parse the square footage."""
-        sqft_elem = listing.select_one(".sqft")
-        if not sqft_elem:
-            return None
-        match = self.sqft_pattern.search(sqft_elem.text)
-        if not match:
-            return None
-        return int(match.group(1).replace(",", ""))
+        if not location_elem or not lat_elem or not lng_elem:
+            raise ParseError("Missing location or geospatial data.")
 
-    def _extract_bedrooms(self, listing: Any) -> Optional[int]:
-        """Extract the number of bedrooms."""
-        bedrooms_elem = listing.select_one(".bedrooms")
-        return int(bedrooms_elem.text.strip()) if bedrooms_elem else None
+        try:
+            latitude = float(lat_elem.text.strip())
+            longitude = float(lng_elem.text.strip())
+            return {
+                "address": location_elem.text.strip(),
+                "coordinates": WKTElement(f"POINT({longitude} {latitude})", srid=4326),
+            }
+        except ValueError:
+            raise ParseError("Invalid geospatial data format.")
 
-    def _extract_bathrooms(self, listing: Any) -> Optional[float]:
-        """Extract the number of bathrooms."""
-        bathrooms_elem = listing.select_one(".bathrooms")
-        return float(bathrooms_elem.text.strip()) if bathrooms_elem else None
+    def _extract_contact_info(self, soup: BeautifulSoup) -> Dict[str, str]:
+        contact = {
+            "name": soup.select_one(".contact-name").text.strip() if soup.select_one(".contact-name") else "Unknown",
+            "email": soup.select_one(".contact-email").text.strip() if soup.select_one(".contact-email") else None,
+            "phone": soup.select_one(".contact-phone").text.strip() if soup.select_one(".contact-phone") else None,
+        }
 
-    def _extract_url(self, listing: Any) -> str:
-        """Extract the listing URL."""
-        url_elem = listing.select_one("a")
-        if not url_elem or not url_elem.get("href"):
-            raise ParseError("Missing listing URL.")
-        return url_elem["href"].strip()
+        if contact["email"] and not validate_email(contact["email"]):
+            raise ParseError("Invalid email format.")
+
+        if contact["phone"] and not validate_phone(contact["phone"]):
+            raise ParseError("Invalid phone format.")
+
+        return contact
+
+    def _extract_metadata(self, soup: BeautifulSoup) -> Dict[str, Any]:
+        """
+        Extract additional metadata for the listing.
+
+        Args:
+            soup (BeautifulSoup): Parsed HTML content.
+
+        Returns:
+            Dict[str, Any]: Metadata dictionary.
+        """
+        return {
+            "listing_date": soup.select_one(".listing-date").text.strip() if soup.select_one(".listing-date") else None,
+            "property_type": soup.select_one(".property-type").text.strip() if soup.select_one(".property-type") else None,
+            "square_footage": soup.select_one(".sqft").text.strip() if soup.select_one(".sqft") else None,
+            "bedrooms": soup.select_one(".bedrooms").text.strip() if soup.select_one(".bedrooms") else None,
+            "bathrooms": soup.select_one(".bathrooms").text.strip() if soup.select_one(".bathrooms") else None,
+        }
+
+    def _validate_lead(self, lead: LeadCreate) -> None:
+        """
+        Validate the parsed lead schema.
+
+        Args:
+            lead (LeadCreate): Parsed lead.
+
+        Raises:
+            ParseError: If validation fails.
+        """
+        if not lead.title:
+            raise ParseError("Title is missing.")
+        if lead.price is None or lead.price <= 0:
+            raise ParseError("Invalid price.")
+        if not lead.location or not lead.location.get("coordinates"):
+            raise ParseError("Invalid location or coordinates.")
+
+    def parse_multiple_listings(self, listings: List[str]) -> List[LeadCreate]:
+        """
+        Parse multiple listings into LeadCreate objects.
+
+        Args:
+            listings (List[str]): List of raw HTML listing contents.
+
+        Returns:
+            List[LeadCreate]: List of parsed and validated leads.
+        """
+        parsed_leads = []
+        for content in listings:
+            try:
+                lead = self.parse_listing(content)
+                parsed_leads.append(lead)
+            except ParseError as e:
+                logger.warning(f"Skipping invalid listing: {e}")
+                continue
+        return parsed_leads
