@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
 from bs4 import BeautifulSoup
