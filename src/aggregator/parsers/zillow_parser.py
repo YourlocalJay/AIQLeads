@@ -1,8 +1,10 @@
-from typing import Dict, Any, List, Optional
+"""
+Zillow data parser optimized for GraphQL API responses.
+"""
+
+from typing import Dict, Any, Optional
 from datetime import datetime
-from bs4 import BeautifulSoup
 import logging
-import re
 from geoalchemy2.elements import WKTElement
 from src.schemas.lead_schema import LeadCreate
 from src.aggregator.parsers.base_parser import BaseParser
@@ -13,172 +15,188 @@ logger = logging.getLogger(__name__)
 
 class ZillowParser(BaseParser):
     """
-    Parser for Zillow listings with enhanced validation, geospatial support,
-    and fraud detection.
+    Parser for Zillow GraphQL API responses with enhanced validation,
+    geospatial support, and fraud detection.
     """
 
     MARKET_ID = "zillow"
-    VERSION = "2.0"
+    VERSION = "2.1"
 
-    def parse_listing(self, content: str) -> LeadCreate:
+    async def parse_async(self, data: Dict[str, Any]) -> LeadCreate:
         """
-        Parse raw HTML content from Zillow into a structured LeadCreate object.
+        Parse Zillow GraphQL response data into a structured LeadCreate object.
 
         Args:
-            content (str): Raw HTML content of a Zillow listing.
+            data (Dict[str, Any]): GraphQL response data for a single listing
 
         Returns:
-            LeadCreate: Parsed lead object.
+            LeadCreate: Parsed lead object
 
         Raises:
-            ParseError: If parsing fails or required fields are missing.
+            ParseError: If parsing fails or required fields are missing
         """
         try:
-            soup = BeautifulSoup(content, "html.parser")
-
-            title = self._extract_title(soup)
-            price = self._extract_price(soup)
-            location = self._extract_location(soup)
-            sqft = self._extract_sqft(soup)
-            bedrooms = self._extract_bedrooms(soup)
-            bathrooms = self._extract_bathrooms(soup)
-            contact = self._extract_contact_info(soup)
-            fraud_score = self._calculate_fraud_score(price, sqft, contact)
-
-            lead = LeadCreate(
-                name=contact.get("name", "Unknown"),
-                email=contact.get("email"),
-                phone=contact.get("phone"),
-                source="Zillow",
-                metadata={
-                    "title": title,
-                    "price": price,
-                    "location": location,
-                    "sqft": sqft,
-                    "bedrooms": bedrooms,
-                    "bathrooms": bathrooms,
-                    "fraud_score": fraud_score,
-                    "extracted_at": datetime.utcnow().isoformat(),
-                    "parser_version": self.VERSION,
-                    "market": self.MARKET_ID,
-                },
+            # Extract core listing data
+            listing_id = data.get('id')
+            price = self._extract_price(data)
+            location = self._extract_location(data)
+            contact = await self._extract_contact_info(data)
+            
+            # Calculate risk metrics
+            fraud_score = self._calculate_fraud_score(
+                price=price,
+                property_type=data.get('propertyType'),
+                days_on_market=data.get('daysOnZillow'),
+                contact=contact
             )
 
-            self._validate_lead(lead)
+            lead = LeadCreate(
+                source_id=listing_id,
+                market=self.MARKET_ID,
+                contact_name=contact.get("name", "Unknown"),
+                email=contact.get("email"),
+                phone=contact.get("phone"),
+                company_name=contact.get("company_name", "FSBO"),
+                location=location,
+                metadata={
+                    "property_type": data.get("propertyType"),
+                    "price": price,
+                    "days_on_market": data.get("daysOnZillow"),
+                    "fraud_score": fraud_score,
+                    "is_fsbo": data.get("isFSBO", False),
+                    "extracted_at": datetime.utcnow().isoformat(),
+                    "parser_version": self.VERSION
+                }
+            )
+
+            await self._validate_lead(lead)
             return lead
 
         except Exception as e:
-            logger.error(f"Failed to parse Zillow listing: {e}", exc_info=True)
-            raise ParseError(f"Failed to parse Zillow listing: {e}")
+            logger.error(f"Failed to parse Zillow listing {data.get('id')}: {e}", exc_info=True)
+            raise ParseError(f"Failed to parse Zillow listing: {str(e)}")
 
-    def _extract_title(self, soup: BeautifulSoup) -> str:
-        title_elem = soup.select_one(".property-title")
-        if not title_elem:
-            raise ParseError("Missing property title.")
-        return title_elem.text.strip()
+    def _extract_price(self, data: Dict[str, Any]) -> Optional[float]:
+        """Extract and validate price from listing data."""
+        price = data.get('price')
+        if price is not None:
+            try:
+                return validate_price(price)
+            except ValueError as e:
+                logger.warning(f"Invalid price format: {price}")
+                raise ParseError(f"Invalid price format: {str(e)}")
+        return None
 
-    def _extract_price(self, soup: BeautifulSoup) -> Optional[float]:
-        price_elem = soup.select_one(".property-price")
-        if not price_elem:
-            return None
+    def _extract_location(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Extract and validate location data."""
+        location_data = data.get('location', {})
+        
         try:
-            return validate_price(price_elem.text.strip())
-        except ValueError:
-            raise ParseError("Invalid price format.")
-
-    def _extract_location(self, soup: BeautifulSoup) -> Dict[str, Any]:
-        location_elem = soup.select_one(".property-location")
-        if not location_elem:
-            raise ParseError("Missing location element.")
-
-        try:
-            lat_elem = soup.select_one(".latitude")
-            lng_elem = soup.select_one(".longitude")
-
-            latitude = float(lat_elem.text.strip()) if lat_elem else None
-            longitude = float(lng_elem.text.strip()) if lng_elem else None
+            latitude = location_data.get('latitude')
+            longitude = location_data.get('longitude')
 
             if latitude is None or longitude is None:
-                raise ValueError("Incomplete geospatial data.")
+                raise ValueError("Missing geospatial coordinates")
 
             return {
-                "address": location_elem.text.strip(),
-                "geometry": WKTElement(f"POINT({longitude} {latitude})", srid=4326),
+                "coordinates": WKTElement(f"POINT({longitude} {latitude})", srid=4326),
+                "raw_data": location_data
             }
-        except (ValueError, AttributeError):
-            raise ParseError("Invalid geospatial data format.")
 
-    def _extract_sqft(self, soup: BeautifulSoup) -> Optional[int]:
-        sqft_elem = soup.select_one(".property-sqft")
-        if not sqft_elem:
-            return None
-        try:
-            return int(sqft_elem.text.strip().replace(",", ""))
-        except ValueError:
-            logger.warning(f"Invalid square footage format: {sqft_elem.text}")
-            return None
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid location data: {e}")
+            raise ParseError(f"Invalid location data: {str(e)}")
 
-    def _extract_bedrooms(self, soup: BeautifulSoup) -> Optional[int]:
-        bedrooms_elem = soup.select_one(".property-bedrooms")
-        if not bedrooms_elem:
-            return None
-        try:
-            return int(bedrooms_elem.text.strip())
-        except ValueError:
-            logger.warning(f"Invalid bedrooms format: {bedrooms_elem.text}")
-            return None
+    async def _extract_contact_info(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and validate contact information."""
+        contact = {}
+        
+        # Handle agent data
+        if 'agent' in data:
+            agent_data = data['agent']
+            contact.update({
+                'name': agent_data.get('name'),
+                'company_name': agent_data.get('brokerName'),
+                'phone': agent_data.get('phoneNumber'),
+                'email': agent_data.get('email')
+            })
+        
+        # Handle FSBO data
+        if data.get('isFSBO') and 'owner' in data:
+            owner_data = data['owner']
+            contact.update({
+                'name': owner_data.get('name'),
+                'phone': owner_data.get('phoneNumber'),
+                'email': owner_data.get('email'),
+                'company_name': 'FSBO'
+            })
 
-    def _extract_bathrooms(self, soup: BeautifulSoup) -> Optional[float]:
-        bathrooms_elem = soup.select_one(".property-bathrooms")
-        if not bathrooms_elem:
-            return None
-        try:
-            return float(bathrooms_elem.text.strip())
-        except ValueError:
-            logger.warning(f"Invalid bathrooms format: {bathrooms_elem.text}")
-            return None
+        # Validate contact data
+        if contact.get('email'):
+            if not validate_email(contact['email']):
+                logger.warning(f"Invalid email format: {contact['email']}")
+                contact['email'] = None
 
-    def _extract_contact_info(self, soup: BeautifulSoup) -> Dict[str, Any]:
-        contact = {
-            "name": soup.select_one(".contact-name").text.strip() if soup.select_one(".contact-name") else "Unknown",
-            "email": soup.select_one(".contact-email").text.strip() if soup.select_one(".contact-email") else None,
-            "phone": soup.select_one(".contact-phone").text.strip() if soup.select_one(".contact-phone") else None,
-        }
+        if contact.get('phone'):
+            if not validate_phone(contact['phone']):
+                logger.warning(f"Invalid phone format: {contact['phone']}")
+                contact['phone'] = None
 
-        if contact["email"] and not validate_email(contact["email"]):
-            raise ParseError("Invalid email format.")
-
-        if contact["phone"] and not validate_phone(contact["phone"]):
-            raise ParseError("Invalid phone number format.")
+        if not contact.get('email') and not contact.get('phone'):
+            raise ParseError("No valid contact information available")
 
         return contact
 
-    def _calculate_fraud_score(self, price: Optional[float], sqft: Optional[int], contact: Dict[str, Any]) -> float:
+    def _calculate_fraud_score(
+        self,
+        price: Optional[float],
+        property_type: Optional[str],
+        days_on_market: Optional[int],
+        contact: Dict[str, Any]
+    ) -> float:
+        """Calculate fraud risk score based on listing attributes."""
         score = 0.0
 
-        if not contact.get("email") and not contact.get("phone"):
+        # Contact information checks
+        if not contact.get('email') or not contact.get('phone'):
             score += 20.0
 
-        if price and price < 50000:
-            score += 30.0
+        # Price anomaly checks
+        if price:
+            if price < 50000:
+                score += 30.0
+            elif price > 10000000:
+                score += 15.0
 
-        if sqft and sqft > 10000:
-            score += 15.0
+        # Listing duration checks
+        if days_on_market and days_on_market < 1:
+            score += 10.0
+
+        # Property type validation
+        if not property_type:
+            score += 5.0
 
         return min(score, 100.0)
 
-    def _validate_lead(self, lead: LeadCreate) -> None:
+    async def _validate_lead(self, lead: LeadCreate) -> None:
         """
-        Perform additional validation on the parsed lead.
+        Perform comprehensive validation on the parsed lead.
 
         Args:
-            lead (LeadCreate): Parsed lead.
+            lead (LeadCreate): Parsed lead object
 
         Raises:
-            ParseError: If validation fails.
+            ParseError: If validation fails
         """
-        if lead.price is None or lead.price <= 0:
-            raise ParseError("Lead price must be greater than zero.")
+        if not lead.source_id:
+            raise ParseError("Missing listing ID")
 
-        if lead.metadata["location"] is None:
-            raise ParseError("Lead location must be valid.")
+        if not lead.location:
+            raise ParseError("Invalid or missing location data")
+
+        if lead.metadata.get('fraud_score', 0) > 80:
+            raise ParseError("Lead failed fraud detection checks")
+
+        # Ensure either email or phone is present
+        if not lead.email and not lead.phone:
+            raise ParseError("No valid contact methods available")
