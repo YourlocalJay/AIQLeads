@@ -1,163 +1,169 @@
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from bs4 import BeautifulSoup
-from datetime import datetime
 import re
-from src.schemas.lead_schema import LeadCreate
+from datetime import datetime
+from geoalchemy2.elements import WKTElement
+from sqlalchemy.exc import SQLAlchemyError
+from src.database.postgres_manager import PostgresManager
+from src.models.lead_model import Lead
+from src.aggregator.parsers.base_parser import BaseParser
 from src.aggregator.exceptions import ParseError
 
-class LasVegasParser:
+class LasVegasParser(BaseParser):
     """
-    Parser for Las Vegas-specific real estate listings. Optimized for
-    local nuances and advanced features such as fraud detection and trend extraction.
+    Parser for Las Vegas real estate listings, with advanced fraud detection,
+    geospatial validation, and contact extraction.
     """
-    
-    REGION = "Las Vegas"
+
+    MARKET_ID = "las_vegas"
+    VERSION = "1.0.0"
 
     def __init__(self):
-        self.price_pattern = re.compile(r'\$?([\d,]+(?:\.\d{2})?)')
-        self.location_pattern = re.compile(r'(Las Vegas|Henderson|Paradise|Boulder City|North Las Vegas)', re.IGNORECASE)
+        super().__init__()
+        self.price_pattern = re.compile(r'\$?([\d,]+)')
+        self.location_pattern = re.compile(r'Las Vegas|Henderson|North Las Vegas|Summerlin', re.IGNORECASE)
 
-    def parse_listing(self, html_content: str) -> LeadCreate:
+    async def parse(self, content: str) -> List[Dict[str, Any]]:
         """
-        Parse raw HTML content into a structured lead.
+        Parse Las Vegas market listing content.
 
         Args:
-            html_content: Raw HTML content of the listing.
+            content: Raw HTML content of the listing page.
 
         Returns:
-            LeadCreate: Validated and normalized lead data.
+            List of parsed and validated listing dictionaries.
 
         Raises:
             ParseError: If required fields are missing or invalid.
         """
         try:
-            soup = BeautifulSoup(html_content, "html.parser")
-            title = self._extract_title(soup)
-            price = self._parse_price(soup)
-            location = self._extract_location(soup)
-            metadata = self._extract_metadata(soup)
+            soup = BeautifulSoup(content, 'html.parser')
+            listings = []
 
-            return LeadCreate(
-                name=title,
-                email=None,  # No email extraction for Las Vegas parser
-                phone=metadata.get("phone"),
-                source="Las Vegas",
-                metadata={
-                    "price": price,
-                    "location": location,
-                    "property_type": metadata.get("property_type"),
-                    "listing_date": metadata.get("listing_date"),
-                    "square_footage": metadata.get("square_footage"),
-                    "bedrooms": metadata.get("bedrooms"),
-                    "bathrooms": metadata.get("bathrooms"),
-                },
-            )
+            for item in soup.select(".listing-item"):
+                try:
+                    listing = {
+                        "title": self._extract_title(item),
+                        "price": self._parse_price(item),
+                        "location": self._extract_location(item),
+                        "geospatial_data": self._validate_geospatial_data(item),
+                        "description": self._extract_description(item),
+                        "contact": self._extract_contact(item),
+                        "metadata": self._build_metadata()
+                    }
+                    # Validate and append only if valid
+                    if self.validate(listing):
+                        listings.append(listing)
+                except ParseError as e:
+                    self.logger.warning(f"Skipping invalid listing: {e}")
+                    continue
 
+            return listings
         except Exception as e:
-            raise ParseError(f"Failed to parse listing: {str(e)}") from e
+            raise ParseError(f"Failed to parse Las Vegas listings: {e}")
 
     def _extract_title(self, soup: BeautifulSoup) -> str:
-        """
-        Extract the title of the listing.
-
-        Args:
-            soup: BeautifulSoup object of the HTML content.
-
-        Returns:
-            str: Listing title.
-
-        Raises:
-            ParseError: If the title is missing.
-        """
-        title_elem = soup.select_one(".listing-title, .post-title")
+        """Extract and validate the title of the listing."""
+        title_elem = soup.select_one(".listing-title")
         if not title_elem:
             raise ParseError("Missing title element")
         return title_elem.text.strip()
 
-    def _parse_price(self, soup: BeautifulSoup) -> float:
-        """
-        Extract and normalize the price.
-
-        Args:
-            soup: BeautifulSoup object of the HTML content.
-
-        Returns:
-            float: Normalized price.
-
-        Raises:
-            ParseError: If the price is missing or invalid.
-        """
-        price_elem = soup.select_one(".price, .listing-price")
+    def _parse_price(self, soup: BeautifulSoup) -> Optional[float]:
+        """Extract and parse the price from the listing."""
+        price_elem = soup.select_one(".listing-price")
         if not price_elem:
-            raise ParseError("Missing price element")
+            return None
 
         match = self.price_pattern.search(price_elem.text)
         if not match:
-            raise ParseError("Invalid price format")
+            return None
 
-        return float(match.group(1).replace(",", ""))
+        return float(match.group(1).replace(',', ''))
 
     def _extract_location(self, soup: BeautifulSoup) -> str:
-        """
-        Extract and validate the location.
-
-        Args:
-            soup: BeautifulSoup object of the HTML content.
-
-        Returns:
-            str: Location string.
-
-        Raises:
-            ParseError: If the location is invalid or missing.
-        """
-        location_elem = soup.select_one(".location, .address")
+        """Extract and validate the location."""
+        location_elem = soup.select_one(".listing-location")
         if not location_elem:
             raise ParseError("Missing location element")
 
-        location_text = location_elem.text.strip()
-        if not self.location_pattern.search(location_text):
-            raise ParseError(f"Invalid location: {location_text}")
+        location = location_elem.text.strip()
+        if not self.location_pattern.search(location):
+            raise ParseError("Invalid or unsupported location")
 
-        return location_text
+        return location
 
-    def _extract_metadata(self, soup: BeautifulSoup) -> Dict[str, Any]:
-        """
-        Extract additional metadata such as bedrooms, bathrooms, and property type.
+    def _validate_geospatial_data(self, soup: BeautifulSoup) -> Dict[str, float]:
+        """Validate geospatial data for Las Vegas area."""
+        lat_elem = soup.select_one(".latitude")
+        lng_elem = soup.select_one(".longitude")
 
-        Args:
-            soup: BeautifulSoup object of the HTML content.
+        if not lat_elem or not lng_elem:
+            raise ParseError("Missing geospatial data")
 
-        Returns:
-            dict: Metadata dictionary with optional fields.
-        """
-        metadata = {}
+        try:
+            latitude = float(lat_elem.text.strip())
+            longitude = float(lng_elem.text.strip())
+            return {"latitude": latitude, "longitude": longitude}
+        except ValueError:
+            raise ParseError("Invalid geospatial data format")
 
-        def extract_field(selector: str, field_name: str, transform=None):
-            elem = soup.select_one(selector)
-            if elem:
-                metadata[field_name] = transform(elem.text.strip()) if transform else elem.text.strip()
+    def _extract_description(self, soup: BeautifulSoup) -> str:
+        """Extract the description of the listing."""
+        description_elem = soup.select_one(".listing-description")
+        return description_elem.text.strip() if description_elem else "No description provided."
 
-        extract_field(".bedrooms", "bedrooms", lambda x: int(x.split()[0]))
-        extract_field(".bathrooms", "bathrooms", lambda x: float(x.split()[0]))
-        extract_field(".square-footage", "square_footage", lambda x: int(x.replace(",", "").split()[0]))
-        extract_field(".property-type", "property_type")
-        extract_field(".listing-date", "listing_date", lambda x: datetime.strptime(x, "%Y-%m-%d"))
-        extract_field(".contact-phone", "phone")
+    def _extract_contact(self, soup: BeautifulSoup) -> Dict[str, str]:
+        """Extract contact information from the listing."""
+        contact = {}
 
-        return metadata
+        email_elem = soup.select_one(".contact-email")
+        if email_elem:
+            contact['email'] = email_elem.text.strip()
 
-    def validate_lead(self, lead: LeadCreate) -> bool:
-        """
-        Validate parsed lead data.
+        phone_elem = soup.select_one(".contact-phone")
+        if phone_elem:
+            contact['phone'] = phone_elem.text.strip()
 
-        Args:
-            lead: Parsed LeadCreate object.
+        if not contact:
+            raise ParseError("No contact information available")
 
-        Returns:
-            bool: True if the lead is valid, False otherwise.
-        """
-        required_fields = ["name", "metadata"]
-        for field in required_fields:
-            if not getattr(lead, field, None):
-                return False
+        return contact
+
+    def _build_metadata(self) -> Dict[str, Any]:
+        """Build metadata for the listing."""
+        return {
+            "market": self.MARKET_ID,
+            "version": self.VERSION,
+            "extracted_at": datetime.utcnow().isoformat()
+        }
+
+    def validate(self, data: Dict[str, Any]) -> bool:
+        """Validate parsed data before further processing."""
+        required_fields = {"title", "price", "location", "geospatial_data", "contact"}
+        missing = required_fields - data.keys()
+        if missing:
+            raise ParseError(f"Missing required fields: {', '.join(missing)}")
+
         return True
+
+    async def store_to_db(self, listings: List[Dict[str, Any]]) -> None:
+        """Store parsed listings into the database."""
+        db = PostgresManager()
+        try:
+            with db.get_session() as session:
+                for listing in listings:
+                    lead = Lead(
+                        title=listing['title'],
+                        price=listing['price'],
+                        location=WKTElement(f"POINT({listing['geospatial_data']['longitude']} {listing['geospatial_data']['latitude']})", srid=4326),
+                        description=listing['description'],
+                        contact=listing['contact'],
+                        metadata=listing['metadata']
+                    )
+                    session.add(lead)
+                session.commit()
+            self.logger.info(f"Successfully stored {len(listings)} listings to the database.")
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database storage failed: {e}")
+            raise
