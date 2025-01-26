@@ -1,0 +1,38 @@
+groups:
+- name: AggregatorAlerts
+  rules:
+  - alert: HighErrorRate
+    expr: rate(aggregator_errors_total[5m]) > 0.1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: High error rate detected
+      description: Error rate exceeds 0.1 errors/second
+
+  - alert: LowThroughput
+    expr: rate(aggregator_leads_processed_total[5m]) < 50
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Low processing throughput
+      description: Lead processing rate below 50 leads/second
+
+  - alert: HighMemoryUsage
+    expr: aggregator_memory_bytes > 1024 * 1024 * 1024
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: High memory usage
+      description: Memory usage exceeds 1GB
+
+  - alert: WorkerDepletion
+    expr: aggregator_active_workers < 2
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: Worker pool depletion
+      description: Active workers below minimum threshold
