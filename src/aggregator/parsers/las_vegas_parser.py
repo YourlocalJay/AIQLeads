@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from bs4 import BeautifulSoup
 import re
 from datetime import datetime
@@ -11,16 +11,16 @@ from src.aggregator.exceptions import ParseError
 
 class LasVegasParser(BaseParser):
     """
-    Parser for Las Vegas real estate listings, with advanced fraud detection,
-    geospatial validation, and contact extraction.
+    Parser for Las Vegas real estate listings with advanced fraud detection,
+    geospatial validation, and metadata enrichment.
     """
 
     MARKET_ID = "las_vegas"
-    VERSION = "1.0.0"
+    VERSION = "2.0.0"
 
     def __init__(self):
         super().__init__()
-        self.price_pattern = re.compile(r'\$?([\d,]+)')
+        self.price_pattern = re.compile(r'\$?([\d,]+(?:\.\d{2})?)')
         self.location_pattern = re.compile(r'Las Vegas|Henderson|North Las Vegas|Summerlin', re.IGNORECASE)
 
     async def parse(self, content: str) -> List[Dict[str, Any]]:
