@@ -1,42 +1,43 @@
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
-from geoalchemy2 import Geometry
+from datetime import datetime
+from geoalchemy2.elements import WKTElement
 from shapely.geometry import Point
 from src.schemas.lead_schema import LeadCreate
 from src.aggregator.exceptions import ParseError
 from src.utils.validators import validate_email, validate_phone
-from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
 
 class DallasFtWorthParser:
     """
-    Parser for the Dallas/Ft. Worth (DFW) region, optimized with geospatial capabilities
-    and fraud detection for high-quality data ingestion.
+    Parser for Dallas/Ft. Worth (DFW) region real estate listings.
+    Includes geospatial capabilities and advanced fraud detection.
     """
 
-    REGION = "Dallas-Ft. Worth"
+    MARKET_ID = "dallas_ft_worth"
+    VERSION = "2.0"
 
     @staticmethod
-    def parse_listing(content: str) -> LeadCreate:
+    def parse(content: str) -> LeadCreate:
         """
-        Parse raw listing content into a validated LeadCreate schema.
+        Parse a DFW real estate listing into a structured LeadCreate object.
 
         Args:
             content (str): Raw HTML content of the listing.
 
         Returns:
-            LeadCreate: Validated and normalized lead schema.
+            LeadCreate: Parsed and validated lead object.
 
         Raises:
-            ParseError: If the parsing fails or critical fields are missing.
+            ParseError: If parsing fails or critical fields are missing.
         """
         try:
             soup = BeautifulSoup(content, "html.parser")
 
             title = DallasFtWorthParser._extract_title(soup)
-            price = DallasFtWorthParser._parse_price(soup)
+            price = DallasFtWorthParser._extract_price(soup)
             location = DallasFtWorthParser._extract_location(soup)
             sqft = DallasFtWorthParser._extract_sqft(soup)
             bedrooms = DallasFtWorthParser._extract_bedrooms(soup)
@@ -48,19 +49,19 @@ class DallasFtWorthParser:
                 name=contact.get("name", "Unknown"),
                 email=contact.get("email"),
                 phone=contact.get("phone"),
+                price=price,
+                location=location,
                 source="DallasFtWorth",
                 metadata={
                     "title": title,
-                    "price": price,
-                    "location": location,
                     "square_footage": sqft,
                     "bedrooms": bedrooms,
                     "bathrooms": bathrooms,
                     "fraud_score": fraud_score,
                     "extracted_at": datetime.utcnow().isoformat(),
+                    "parser_version": DallasFtWorthParser.VERSION
                 },
             )
-
             return lead
         except Exception as e:
             logger.error(f"Failed to parse DFW listing: {str(e)}", exc_info=True)
@@ -70,37 +71,41 @@ class DallasFtWorthParser:
     def _extract_title(soup: BeautifulSoup) -> str:
         title_elem = soup.select_one(".listing-title")
         if not title_elem:
-            raise ParseError("Missing title element")
+            raise ParseError("Missing title element.")
         return title_elem.text.strip()
 
     @staticmethod
-    def _parse_price(soup: BeautifulSoup) -> Optional[float]:
+    def _extract_price(soup: BeautifulSoup) -> Optional[float]:
         price_elem = soup.select_one(".price")
         if not price_elem:
-            return None
+            raise ParseError("Missing price element.")
         try:
-            price_str = price_elem.text.replace("$", "").replace(",", "").strip()
-            return float(price_str)
+            return float(price_elem.text.strip().replace("$", "").replace(",", ""))
         except ValueError:
-            logger.warning(f"Invalid price format: {price_elem.text}")
-            return None
+            raise ParseError("Invalid price format.")
 
     @staticmethod
-    def _extract_location(soup: BeautifulSoup) -> Optional[Dict[str, Any]]:
+    def _extract_location(soup: BeautifulSoup) -> Dict[str, Any]:
         location_elem = soup.select_one(".location")
         if not location_elem:
-            raise ParseError("Missing location element")
+            raise ParseError("Missing location element.")
 
-        location_text = location_elem.text.strip()
         try:
-            lat, lng = map(float, location_elem["data-coordinates"].split(","))
+            lat_elem = soup.select_one(".latitude")
+            lng_elem = soup.select_one(".longitude")
+
+            latitude = float(lat_elem.text.strip()) if lat_elem else None
+            longitude = float(lng_elem.text.strip()) if lng_elem else None
+
+            if latitude is None or longitude is None:
+                raise ParseError("Incomplete geospatial coordinates.")
+
             return {
-                "address": location_text,
-                "geometry": Point(lng, lat).wkt,
+                "address": location_elem.text.strip(),
+                "coordinates": Point(longitude, latitude).wkt
             }
-        except (KeyError, ValueError):
-            logger.warning(f"Failed to extract coordinates from location: {location_text}")
-            return {"address": location_text, "geometry": None}
+        except ValueError:
+            raise ParseError("Invalid geospatial coordinate format.")
 
     @staticmethod
     def _extract_sqft(soup: BeautifulSoup) -> Optional[int]:
@@ -108,7 +113,7 @@ class DallasFtWorthParser:
         if not sqft_elem:
             return None
         try:
-            return int(sqft_elem.text.replace(",", "").strip())
+            return int(sqft_elem.text.strip().replace(",", ""))
         except ValueError:
             logger.warning(f"Invalid square footage format: {sqft_elem.text}")
             return None
@@ -136,7 +141,7 @@ class DallasFtWorthParser:
             return None
 
     @staticmethod
-    def _extract_contact(soup: BeautifulSoup) -> Dict[str, Any]:
+    def _extract_contact(soup: BeautifulSoup) -> Dict[str, str]:
         contact = {
             "name": soup.select_one(".contact-name").text.strip() if soup.select_one(".contact-name") else "Unknown",
             "email": soup.select_one(".contact-email").text.strip() if soup.select_one(".contact-email") else None,
@@ -144,10 +149,10 @@ class DallasFtWorthParser:
         }
 
         if contact["email"] and not validate_email(contact["email"]):
-            raise ParseError("Invalid email format")
+            raise ParseError("Invalid email format.")
 
         if contact["phone"] and not validate_phone(contact["phone"]):
-            raise ParseError("Invalid phone number format")
+            raise ParseError("Invalid phone format.")
 
         return contact
 
