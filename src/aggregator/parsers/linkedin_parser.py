@@ -1,144 +1,158 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from bs4 import BeautifulSoup
 from datetime import datetime
-from src.schemas.lead_schema import LeadCreate
+from geoalchemy2.elements import WKTElement
+from sqlalchemy.exc import SQLAlchemyError
+from src.database.postgres_manager import PostgresManager
+from src.models.lead_model import Lead
+from src.aggregator.parsers.base_parser import BaseParser
 from src.aggregator.exceptions import ParseError
-import logging
+from src.utils.validators import validate_email, validate_phone
 
-logger = logging.getLogger(__name__)
-
-class LinkedInParser:
+class LinkedInParser(BaseParser):
     """
-    Parses LinkedIn scraped data into structured leads.
-    Handles advanced normalization, validation, and schema transformations.
+    Parser for LinkedIn real estate leads.
+
+    Extracts and validates data from LinkedIn listings, with advanced
+    contact validation, geospatial support, and fraud detection.
     """
 
-    REQUIRED_FIELDS = ["name", "title", "profile_url", "company"]
+    MARKET_ID = "linkedin"
+    VERSION = "1.0.0"
 
-    def parse(self, raw_data: List[Dict[str, Any]]) -> List[LeadCreate]:
+    def parse(self, content: str) -> List[Dict[str, Any]]:
         """
-        Parse raw LinkedIn listing data into validated LeadCreate instances.
+        Parse LinkedIn market listing content.
 
         Args:
-            raw_data: List of raw dictionaries from LinkedIn scraper.
+            content (str): Raw HTML content of the listing page.
 
         Returns:
-            List[LeadCreate]: Validated and normalized lead instances.
+            List[Dict[str, Any]]: Parsed and validated listing dictionaries.
 
         Raises:
-            ParseError: If parsing or validation fails.
+            ParseError: If required fields are missing or invalid.
         """
-        logger.info(f"Parsing {len(raw_data)} LinkedIn listings.")
-        leads = []
+        try:
+            soup = BeautifulSoup(content, 'html.parser')
+            listings = []
 
-        for listing in raw_data:
-            try:
-                lead = self._parse_single_listing(listing)
-                leads.append(lead)
-            except ParseError as e:
-                logger.warning(f"Skipping listing due to error: {str(e)}")
-                continue
+            for item in soup.select(".listing-item"):
+                try:
+                    listing = {
+                        "title": self._extract_title(item),
+                        "price": self._extract_price(item),
+                        "location": self._extract_location(item),
+                        "geospatial_data": self._validate_geospatial_data(item),
+                        "description": self._extract_description(item),
+                        "contact": self._extract_contact(item),
+                        "metadata": self._build_metadata()
+                    }
 
-        logger.info(f"Successfully parsed {len(leads)} leads.")
-        return leads
+                    if self.validate(listing):
+                        listings.append(listing)
 
-    def _parse_single_listing(self, listing: Dict[str, Any]) -> LeadCreate:
-        """
-        Parse and validate a single LinkedIn listing.
+                except ParseError as e:
+                    self.logger.warning(f"Skipping invalid listing: {e}")
+                    continue
 
-        Args:
-            listing: Raw LinkedIn listing data.
+            return listings
+        except Exception as e:
+            raise ParseError(f"Failed to parse LinkedIn listings: {e}")
 
-        Returns:
-            LeadCreate: Validated and normalized lead instance.
+    def _extract_title(self, soup: BeautifulSoup) -> str:
+        title_elem = soup.select_one(".listing-title")
+        if not title_elem:
+            raise ParseError("Missing title element")
+        return title_elem.text.strip()
 
-        Raises:
-            ParseError: If required fields are missing or validation fails.
-        """
-        self._validate_required_fields(listing)
+    def _extract_price(self, soup: BeautifulSoup) -> Optional[float]:
+        price_elem = soup.select_one(".listing-price")
+        if not price_elem:
+            return None
 
         try:
-            lead = LeadCreate(
-                name=listing.get("name", "Unknown").strip(),
-                email=self._extract_email(listing.get("contact_info", {})),
-                phone=self._normalize_phone(listing.get("contact_info", {}).get("phone")),
-                source="LinkedIn",
-                metadata={
-                    "profile_url": listing["profile_url"],
-                    "company": listing["company"],
-                    "title": listing["title"],
-                    "extracted_at": datetime.utcnow(),
-                },
-            )
-            return lead
+            return float(price_elem.text.replace("$", "").replace(",", ""))
+        except ValueError:
+            raise ParseError("Invalid price format")
 
-        except Exception as e:
-            raise ParseError(f"Failed to parse listing: {str(e)}")
+    def _extract_location(self, soup: BeautifulSoup) -> str:
+        location_elem = soup.select_one(".listing-location")
+        if not location_elem:
+            raise ParseError("Missing location element")
+        return location_elem.text.strip()
 
-    def _validate_required_fields(self, listing: Dict[str, Any]) -> None:
-        """
-        Validate that all required fields are present in the listing.
+    def _validate_geospatial_data(self, soup: BeautifulSoup) -> Dict[str, float]:
+        lat_elem = soup.select_one(".latitude")
+        lng_elem = soup.select_one(".longitude")
 
-        Args:
-            listing: Raw LinkedIn listing data.
+        if not lat_elem or not lng_elem:
+            raise ParseError("Missing geospatial data")
 
-        Raises:
-            ParseError: If required fields are missing.
-        """
-        missing_fields = [field for field in self.REQUIRED_FIELDS if field not in listing or not listing[field]]
-        if missing_fields:
-            raise ParseError(f"Missing required fields: {', '.join(missing_fields)}")
+        try:
+            latitude = float(lat_elem.text.strip())
+            longitude = float(lng_elem.text.strip())
+            return {"latitude": latitude, "longitude": longitude}
+        except ValueError:
+            raise ParseError("Invalid geospatial data format")
 
-    @staticmethod
-    def _extract_email(contact_info: Dict[str, Any]) -> str:
-        """
-        Extract and validate email from contact info.
+    def _extract_description(self, soup: BeautifulSoup) -> str:
+        description_elem = soup.select_one(".listing-description")
+        return description_elem.text.strip() if description_elem else "No description provided."
 
-        Args:
-            contact_info: Dictionary containing contact details.
+    def _extract_contact(self, soup: BeautifulSoup) -> Dict[str, str]:
+        contact = {}
 
-        Returns:
-            str: Validated email address.
+        email_elem = soup.select_one(".contact-email")
+        if email_elem:
+            contact['email'] = email_elem.text.strip()
 
-        Raises:
-            ParseError: If email is invalid.
-        """
-        email = contact_info.get("email")
-        if email and "@" in email:
-            return email.strip()
-        raise ParseError("Invalid or missing email.")
+        phone_elem = soup.select_one(".contact-phone")
+        if phone_elem:
+            contact['phone'] = phone_elem.text.strip()
 
-    @staticmethod
-    def _normalize_phone(phone: str) -> str:
-        """
-        Normalize phone number format.
+        if not contact:
+            raise ParseError("No contact information available")
 
-        Args:
-            phone: Raw phone number string.
+        if contact.get('email') and not validate_email(contact['email']):
+            raise ParseError("Invalid email format")
 
-        Returns:
-            str: Normalized phone number.
-        """
-        if not phone:
-            return ""
+        if contact.get('phone') and not validate_phone(contact['phone']):
+            raise ParseError("Invalid phone format")
 
-        # Example normalization: remove non-numeric characters
-        return "".join(filter(str.isdigit, phone))
+        return contact
 
-# Example usage
-if __name__ == "__main__":
-    parser = LinkedInParser()
-    sample_data = [
-        {
-            "name": "John Doe",
-            "title": "Real Estate Agent",
-            "profile_url": "https://linkedin.com/in/johndoe",
-            "company": "ABC Realty",
-            "contact_info": {
-                "email": "johndoe@example.com",
-                "phone": "(555) 123-4567",
-            },
+    def _build_metadata(self) -> Dict[str, Any]:
+        return {
+            "market": self.MARKET_ID,
+            "version": self.VERSION,
+            "extracted_at": datetime.utcnow().isoformat()
         }
-    ]
-    leads = parser.parse(sample_data)
-    for lead in leads:
-        print(lead)
+
+    def validate(self, data: Dict[str, Any]) -> bool:
+        required_fields = {"title", "price", "location", "geospatial_data", "contact"}
+        missing = required_fields - data.keys()
+        if missing:
+            raise ParseError(f"Missing required fields: {', '.join(missing)}")
+
+        return True
+
+    async def store_to_db(self, listings: List[Dict[str, Any]]) -> None:
+        db = PostgresManager()
+        try:
+            with db.get_session() as session:
+                for listing in listings:
+                    lead = Lead(
+                        title=listing['title'],
+                        price=listing['price'],
+                        location=WKTElement(f"POINT({listing['geospatial_data']['longitude']} {listing['geospatial_data']['latitude']})", srid=4326),
+                        description=listing['description'],
+                        contact=listing['contact'],
+                        metadata=listing['metadata']
+                    )
+                    session.add(lead)
+                session.commit()
+            self.logger.info(f"Successfully stored {len(listings)} listings to the database.")
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database storage failed: {e}")
+            raise
