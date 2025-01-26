@@ -1,160 +1,204 @@
-from typing import Dict, Any
+"""
+Craigslist data parser with enhanced validation and optimization.
+"""
+
+from typing import Dict, Any, Optional, List
 from datetime import datetime
-from bs4 import BeautifulSoup
+import logging
+from geoalchemy2.elements import WKTElement
 from src.schemas.lead_schema import LeadCreate
+from src.aggregator.parsers.base_parser import BaseParser
 from src.aggregator.exceptions import ParseError
-from src.utils.validators import validate_price, validate_location, validate_contact
-from src.utils.logger import setup_logger
+from src.utils.validators import validate_email, validate_phone, validate_price
+from src.utils.text_processor import clean_text, extract_phone_numbers
 
-logger = setup_logger(__name__)
+logger = logging.getLogger(__name__)
 
-class CraigslistParser:
+class CraigslistParser(BaseParser):
     """
-    Parser for Craigslist real estate listings. This parser processes raw HTML content
-    and converts it into structured data adhering to the Lead schema.
-
-    Attributes:
-        MARKET_ID (str): Identifier for the Craigslist market.
-        VERSION (str): Parser version for tracking.
+    Optimized parser for Craigslist listings with enhanced validation
+    and text processing capabilities.
     """
 
     MARKET_ID = "craigslist"
-    VERSION = "2.0"
+    VERSION = "2.1"
 
-    def parse(self, content: str) -> LeadCreate:
+    async def parse_async(self, data: Dict[str, Any]) -> LeadCreate:
         """
-        Parse raw Craigslist listing content into a validated LeadCreate instance.
+        Parse Craigslist listing data with advanced validation.
 
         Args:
-            content (str): Raw HTML content of the listing.
+            data: Raw listing data from Craigslist API
 
         Returns:
-            LeadCreate: Structured lead data.
-
-        Raises:
-            ParseError: If required fields are missing or invalid.
+            LeadCreate: Validated lead object
         """
         try:
-            soup = BeautifulSoup(content, "html.parser")
-
-            # Extract and validate title
-            title = self._extract_title(soup)
+            listing_id = data.get('id')
+            contact = await self._extract_contact_info(data)
+            location = self._extract_location(data)
+            price = self._extract_price(data)
             
-            # Extract and validate price
-            price = self._extract_price(soup)
+            description = clean_text(data.get('description', ''))
             
-            # Extract and validate location
-            location = self._extract_location(soup)
-            
-            # Extract additional metadata
-            metadata = self._extract_metadata(soup)
+            # Enhanced metadata extraction
+            metadata = {
+                "title": data.get("title"),
+                "price": price,
+                "posting_date": data.get("created"),
+                "category": data.get("category"),
+                "subcategory": data.get("subcategory"),
+                "fraud_score": self._calculate_fraud_score(data, description),
+                "extracted_at": datetime.utcnow().isoformat(),
+                "parser_version": self.VERSION,
+                "attributes": self._extract_attributes(data),
+                "keywords": self._extract_keywords(description)
+            }
 
-            # Extract contact information
-            contact = self._extract_contact(soup)
-
-            # Build and return the LeadCreate instance
-            return LeadCreate(
-                title=title,
-                price=price,
-                location=location,
-                metadata=metadata,
-                source="Craigslist",
-                contact=contact,
+            lead = LeadCreate(
+                source_id=listing_id,
                 market=self.MARKET_ID,
-                parser_version=self.VERSION,
-                extracted_at=datetime.utcnow().isoformat()
+                contact_name=contact.get("name", "Unknown"),
+                email=contact.get("email"),
+                phone=contact.get("phone"),
+                company_name=contact.get("company_name", "Individual"),
+                location=location,
+                metadata=metadata
             )
 
+            await self._validate_lead(lead)
+            return lead
+
         except Exception as e:
-            logger.error(f"Error parsing Craigslist listing: {str(e)}", exc_info=True)
-            raise ParseError(f"Error parsing Craigslist listing: {str(e)}")
+            logger.error(f"Failed to parse Craigslist listing {data.get('id')}: {e}", exc_info=True)
+            raise ParseError(f"Failed to parse Craigslist listing: {str(e)}")
 
-    def _extract_title(self, soup: BeautifulSoup) -> str:
-        """Extract and validate the listing title."""
-        title_elem = soup.select_one(".posting-title")
-        if not title_elem:
-            raise ParseError("Missing title element.")
-        return title_elem.text.strip()
+    async def _extract_contact_info(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and validate contact information with enhanced phone extraction."""
+        contact = {
+            'name': data.get('contact_name', 'Unknown'),
+            'email': data.get('from_email'),
+            'phone': None,
+            'company_name': None
+        }
 
-    def _extract_price(self, soup: BeautifulSoup) -> float:
-        """Extract and validate the listing price."""
-        price_elem = soup.select_one(".price")
-        if not price_elem:
-            raise ParseError("Missing price element.")
+        # Enhanced phone number extraction from description
+        if not contact['phone'] and data.get('description'):
+            phones = extract_phone_numbers(data['description'])
+            if phones:
+                contact['phone'] = phones[0]  # Use first valid phone number
 
-        try:
-            price = validate_price(price_elem.text)
-            return price
-        except ValueError as e:
-            logger.warning(f"Invalid price format: {price_elem.text}")
-            raise ParseError("Invalid price format.") from e
+        # Validate contact information
+        if contact['email']:
+            contact['email'] = contact['email'].lower()
+            if not validate_email(contact['email']):
+                contact['email'] = None
 
-    def _extract_location(self, soup: BeautifulSoup) -> Dict[str, Any]:
-        """Extract and validate the listing location."""
-        location_elem = soup.select_one(".location")
-        if not location_elem:
-            raise ParseError("Missing location element.")
+        if contact['phone'] and not validate_phone(contact['phone']):
+            contact['phone'] = None
 
-        try:
-            location = validate_location(location_elem.text)
-            return location
-        except ValueError as e:
-            logger.warning(f"Invalid location format: {location_elem.text}")
-            raise ParseError("Invalid location format.") from e
-
-    def _extract_metadata(self, soup: BeautifulSoup) -> Dict[str, Any]:
-        """Extract additional metadata from the listing."""
-        metadata = {}
-
-        # Example: Posting date
-        date_elem = soup.select_one(".posting-date")
-        if date_elem:
-            try:
-                metadata["posting_date"] = datetime.strptime(date_elem.text.strip(), "%Y-%m-%d")
-            except ValueError:
-                logger.warning(f"Invalid posting date format: {date_elem.text}")
-
-        # Example: Property details (bedrooms, bathrooms, sqft)
-        details_elem = soup.select_one(".property-details")
-        if details_elem:
-            metadata["details"] = details_elem.text.strip()
-
-        return metadata
-
-    def _extract_contact(self, soup: BeautifulSoup) -> Dict[str, Any]:
-        """Extract contact information from the listing."""
-        contact = {}
-
-        email_elem = soup.select_one(".reply-email")
-        phone_elem = soup.select_one(".reply-phone")
-
-        if email_elem:
-            contact["email"] = validate_contact(email_elem.text, "email")
-
-        if phone_elem:
-            contact["phone"] = validate_contact(phone_elem.text, "phone")
-
-        if not contact:
-            logger.warning("No contact information found.")
+        if not (contact['email'] or contact['phone']):
+            raise ParseError("No valid contact information found")
 
         return contact
 
-if __name__ == "__main__":
-    # Example usage for testing
-    sample_html = """
-    <html>
-        <div class='posting-title'>Beautiful Home</div>
-        <div class='price'>$250,000</div>
-        <div class='location'>Austin, TX</div>
-        <div class='reply-email'>contact@example.com</div>
-        <div class='reply-phone'>(123) 456-7890</div>
-        <div class='posting-date'>2025-01-25</div>
-    </html>
-    """
+    def _extract_location(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and validate location data with enhanced geocoding."""
+        try:
+            lat = data.get('geolocation', {}).get('lat')
+            lon = data.get('geolocation', {}).get('lon')
+            
+            if not (lat and lon):
+                raise ValueError("Missing coordinates")
 
-    parser = CraigslistParser()
-    try:
-        lead = parser.parse(sample_html)
-        print(lead)
-    except ParseError as e:
-        print(f"Failed to parse listing: {e}")
+            return {
+                "coordinates": WKTElement(f"POINT({lon} {lat})", srid=4326),
+                "address": data.get('address'),
+                "neighborhood": data.get('neighborhood'),
+                "city": data.get('city'),
+                "state": data.get('state'),
+                "raw_data": data.get('geolocation', {})
+            }
+
+        except Exception as e:
+            logger.warning(f"Location extraction failed: {e}")
+            raise ParseError(f"Invalid location data: {str(e)}")
+
+    def _extract_price(self, data: Dict[str, Any]) -> Optional[float]:
+        """Extract and validate price with enhanced parsing."""
+        try:
+            price_str = data.get('price', '')
+            if not price_str:
+                return None
+                
+            # Remove currency symbols and normalize
+            price_str = ''.join(c for c in price_str if c.isdigit() or c == '.')
+            price = float(price_str)
+            
+            return validate_price(price)
+            
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Price extraction failed: {e}")
+            return None
+
+    def _extract_attributes(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract listing attributes with validation."""
+        attributes = {}
+        
+        if 'attributes' in data:
+            for attr in data['attributes']:
+                key = attr.get('key', '').lower()
+                value = attr.get('value')
+                if key and value:
+                    attributes[key] = value
+
+        return attributes
+
+    def _extract_keywords(self, description: str) -> List[str]:
+        """Extract relevant keywords from description."""
+        # Implement keyword extraction logic
+        keywords = []
+        # Add implementation
+        return keywords
+
+    def _calculate_fraud_score(self, data: Dict[str, Any], description: str) -> float:
+        """Calculate fraud risk score based on listing characteristics."""
+        score = 0.0
+
+        # Price analysis
+        price = self._extract_price(data)
+        if price:
+            if price < 100:
+                score += 30.0
+            elif price > 1000000:
+                score += 15.0
+
+        # Description analysis
+        if len(description) < 50:
+            score += 20.0
+
+        # Contact information completeness
+        if not data.get('from_email'):
+            score += 10.0
+
+        # Location accuracy
+        if not data.get('geolocation'):
+            score += 15.0
+
+        # Add more fraud detection rules
+
+        return min(score, 100.0)
+
+    async def _validate_lead(self, lead: LeadCreate) -> None:
+        """Perform comprehensive lead validation."""
+        if not lead.source_id:
+            raise ParseError("Missing listing ID")
+
+        if not lead.location:
+            raise ParseError("Invalid location data")
+
+        if lead.metadata.get('fraud_score', 0) > 80:
+            raise ParseError("Lead failed fraud detection")
+
+        if not lead.email and not lead.phone:
+            raise ParseError("No valid contact methods")
