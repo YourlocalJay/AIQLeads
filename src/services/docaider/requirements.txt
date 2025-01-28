@@ -1,0 +1,11 @@
+# Docaider service dependencies
+redis>=4.5.4
+pydantic>=2.0.0
+sqlalchemy>=2.0.0
+backoff>=2.2.1
+prometheus-client>=0.16.0
+
+# Optional dependencies for enhanced features
+python-frontmatter>=1.0.0  # Markdown metadata support
+pygments>=2.15.0  # Syntax highlighting
+markdown>=3.3.7  # Markdown processing
