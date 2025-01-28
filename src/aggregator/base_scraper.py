@@ -1,131 +1,344 @@
+# src/aggregator/core/base_scraper.py
+import asyncio
+import logging
+import random
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
-from datetime import datetime
-from src.aggregator.rate_limiter import RateLimiter
-from src.aggregator.exceptions import ScraperError, NetworkError
-from src.schemas.lead_schema import LeadCreate
+from typing import Any, Dict, List, Optional, AsyncGenerator
+from urllib.parse import urlparse, urljoin
+from datetime import datetime, timedelta
+from collections import defaultdict
 
+import httpx
+import orjson
+import aiohttp
+from bs4 import BeautifulSoup
+from tenacity import retry, stop_after_attempt, wait_exponential
+from playwright.async_api import async_playwright, Browser, Page
+
+from app.core.config import settings
+from app.services.logging import logger
+from app.services.monitoring import prometheus_metrics
+from app.services.cache.redis_service import AIQRedisCache
+
+class RequestFingerprinter:
+    """
+    Generates randomized request headers to avoid detection
+    """
+    USER_AGENTS = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+    ]
+
+    ACCEPT_LANGUAGES = [
+        "en-US,en;q=0.9",
+        "en-GB,en;q=0.8",
+        "fr-FR,fr;q=0.7",
+    ]
+
+    @classmethod
+    def generate_headers(cls, base_url: str) -> Dict[str, str]:
+        """
+        Generate randomized request headers
+        
+        Args:
+            base_url (str): Base URL for referer
+        
+        Returns:
+            Dict[str, str]: Randomized headers
+        """
+        return {
+            "User-Agent": random.choice(cls.USER_AGENTS),
+            "Accept-Language": random.choice(cls.ACCEPT_LANGUAGES),
+            "Referer": f"https://{urlparse(base_url).netloc}",
+            "Accept": "application/json, text/plain, */*",
+            "DNT": "1"
+        }
+
+class RateLimiter:
+    """
+    Dynamic rate limiting with adaptive adjustment
+    """
+    def __init__(self, default_rate_limit: int = 10):
+        self._rate_limits = defaultdict(lambda: default_rate_limit)
+        self._request_timestamps = defaultdict(list)
+        self._error_counters = defaultdict(int)
+
+    def can_make_request(self, domain: str) -> bool:
+        """
+        Check if a request can be made for a specific domain
+        
+        Args:
+            domain (str): Target domain
+        
+        Returns:
+            bool: Whether request is allowed
+        """
+        current_time = datetime.now()
+        rate_limit = self._rate_limits[domain]
+        timestamps = self._request_timestamps[domain]
+        
+        # Remove old timestamps
+        timestamps[:] = [
+            ts for ts in timestamps 
+            if (current_time - ts).total_seconds() <= 60
+        ]
+        
+        if len(timestamps) < rate_limit:
+            timestamps.append(current_time)
+            return True
+        return False
+
+    def record_error(self, domain: str, status_code: Optional[int] = None):
+        """
+        Adjust rate limit based on errors
+        
+        Args:
+            domain (str): Target domain
+            status_code (Optional[int]): HTTP status code
+        """
+        self._error_counters[domain] += 1
+        
+        # Reduce rate limit on repeated errors or 429 status
+        if status_code == 429 or self._error_counters[domain] > 5:
+            current_limit = self._rate_limits[domain]
+            new_limit = max(1, current_limit // 2)
+            self._rate_limits[domain] = new_limit
+            
+            logger.warning(
+                f"Rate limit adjusted for {domain}: {current_limit} -> {new_limit}"
+            )
+            
+            # Reset error counter
+            self._error_counters[domain] = 0
+
+    def record_success(self, domain: str):
+        """
+        Gradually increase rate limit after successful requests
+        
+        Args:
+            domain (str): Target domain
+        """
+        current_limit = self._rate_limits[domain]
+        new_limit = min(20, int(current_limit * 1.2))  # 20% increase, max 20
+        
+        self._rate_limits[domain] = new_limit
+        self._error_counters[domain] = 0
+        
+        logger.info(
+            f"Rate limit increased for {domain}: {current_limit} -> {new_limit}"
+        )
+
+class ProxyManager:
+    """
+    Advanced proxy management with performance tracking
+    """
+    def __init__(self, proxies: Optional[List[str]] = None):
+        self._proxies = proxies or []
+        self._proxy_performance = defaultdict(lambda: defaultdict(float))
+        self._last_used_proxy = {}
+
+    def get_best_proxy(self, domain: str) -> Optional[str]:
+        """
+        Select best proxy for a specific domain
+        
+        Args:
+            domain (str): Target domain
+        
+        Returns:
+            Optional[str]: Best performing proxy
+        """
+        if not self._proxies:
+            return None
+        
+        # Prioritize proxies with highest domain-specific performance
+        domain_proxy_scores = {
+            proxy: self._proxy_performance[domain][proxy] 
+            for proxy in self._proxies
+        }
+        
+        # Fallback to round-robin if no performance data
+        if not domain_proxy_scores:
+            proxy = self._proxies[
+                (self._last_used_proxy.get(domain, -1) + 1) % len(self._proxies)
+            ]
+        else:
+            proxy = max(domain_proxy_scores, key=domain_proxy_scores.get)
+        
+        self._last_used_proxy[domain] = self._proxies.index(proxy)
+        return proxy
+
+    def report_proxy_success(self, domain: str, proxy: str):
+        """
+        Record successful proxy usage
+        
+        Args:
+            domain (str): Target domain
+            proxy (str): Proxy URL
+        """
+        current_score = self._proxy_performance[domain][proxy]
+        self._proxy_performance[domain][proxy] = min(1.0, current_score + 0.1)
+
+    def report_proxy_failure(self, domain: str, proxy: str):
+        """
+        Reduce proxy performance score on failure
+        
+        Args:
+            domain (str): Target domain
+            proxy (str): Proxy URL
+        """
+        current_score = self._proxy_performance[domain][proxy]
+        self._proxy_performance[domain][proxy] = max(0.0, current_score * 0.8)
 
 class BaseScraper(ABC):
-    """Abstract base class for all lead scrapers.
-    
-    Provides core functionality and interface requirements for platform-specific
-    implementations. Handles rate limiting, error tracking, and data validation.
+    """
+    Comprehensive base scraper with advanced scraping capabilities
     """
     
-    def __init__(self, rate_limit: int = 60, time_window: int = 60):
-        """Initialize scraper with rate limiting parameters.
+    def __init__(
+        self, 
+        base_url: str,
+        default_rate_limit: int = 10,
+        timeout: float = 30.0,
+        proxies: Optional[List[str]] = None,
+        cache: Optional[AIQRedisCache] = None
+    ):
+        self.base_url = base_url
+        self.timeout = timeout
+        
+        # Core components
+        self.rate_limiter = RateLimiter(default_rate_limit)
+        self.proxy_manager = ProxyManager(proxies)
+        self.cache = cache or AIQRedisCache()
+        
+        # Monitoring
+        self.metrics = PerformanceMetricsAggregator()
+        
+        # Browser management
+        self._browser_manager = None
+
+    async def _get_browser_manager(self) -> PersistentBrowserManager:
+        """
+        Lazy initialize browser manager
+        
+        Returns:
+            PersistentBrowserManager: Browser management instance
+        """
+        if not self._browser_manager:
+            self._browser_manager = await PersistentBrowserManager.get_instance()
+        return self._browser_manager
+
+    async def _safe_fetch(
+        self, 
+        url: str, 
+        method: str = 'GET', 
+        **kwargs
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Comprehensive fetch method with multiple fallback mechanisms
         
         Args:
-            rate_limit (int): Maximum number of requests allowed
-            time_window (int): Time window in seconds for rate limiting
+            url (str): Target URL
+            method (str): HTTP method
+            **kwargs: Additional request parameters
+        
+        Returns:
+            Optional[Dict[str, Any]]: Fetched data
         """
-        self.rate_limiter = RateLimiter(rate_limit, time_window)
-        self.errors: List[Dict[str, Any]] = []
-        self.last_scrape: Optional[datetime] = None
-        self._session = None  # HTTP session placeholder for implementations
-    
-    async def __aenter__(self):
-        """Async context manager entry."""
-        await self.initialize()
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        await self.cleanup()
-    
-    async def initialize(self) -> None:
-        """Initialize scraper resources (e.g., HTTP session)."""
-        pass
-    
-    async def cleanup(self) -> None:
-        """Clean up resources (e.g., close HTTP session)."""
-        if self._session:
-            await self._session.close()
-            self._session = None
-    
+        domain = urlparse(url).netloc
+        
+        # Check rate limiting
+        if not self.rate_limiter.can_make_request(domain):
+            logger.warning(f"Rate limit exceeded for {domain}")
+            return None
+        
+        # Select proxy
+        proxy = self.proxy_manager.get_best_proxy(domain)
+        
+        # Generate dynamic headers
+        headers = RequestFingerprinter.generate_headers(self.base_url)
+        
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(self.timeout, connect=10.0),
+                follow_redirects=True,
+                proxy=proxy,
+                headers=headers
+            ) as client:
+                response = await client.request(method, url, **kwargs)
+                
+                # Successful response
+                if response.status_code == 200:
+                    self.rate_limiter.record_success(domain)
+                    self.proxy_manager.report_proxy_success(domain, proxy)
+                    return response.json()
+                
+                # Handle rate limiting
+                if response.status_code == 429:
+                    self.rate_limiter.record_error(domain, 429)
+                    self.proxy_manager.report_proxy_failure(domain, proxy)
+                    return None
+                
+                # Log other status codes
+                logger.warning(f"Unusual status code {response.status_code} for {url}")
+                return None
+        
+        except Exception as e:
+            logger.error(f"Fetch error for {url}: {e}")
+            self.rate_limiter.record_error(domain)
+            
+            # Optional: Fallback to browser-based scraping
+            try:
+                browser_manager = await self._get_browser_manager()
+                page = await browser_manager.get_session(domain)
+                await page.goto(url)
+                content = await page.content()
+                return {"html_content": content}
+            except Exception as browser_err:
+                logger.error(f"Browser scraping failed for {url}: {browser_err}")
+                return None
+
     @abstractmethod
-    async def search(self, location: str, radius_km: float = 50.0, **kwargs) -> List[LeadCreate]:
-        """Search for leads in the specified location.
+    async def scrape(self, query: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Abstract method for core scraping logic
         
         Args:
-            location (str): Target location (city, state, or postal code)
-            radius_km (float): Search radius in kilometers
-            **kwargs: Platform-specific search parameters
-            
-        Returns:
-            List[LeadCreate]: List of validated lead schemas
-            
-        Raises:
-            ScraperError: If scraping fails or rate limit is exceeded
-            NetworkError: If network request fails
-        """
-        pass
-    
-    @abstractmethod
-    async def validate_credentials(self) -> bool:
-        """Validate API credentials or session state.
+            query (Optional[str]): Optional search query
         
         Returns:
-            bool: True if credentials are valid, False otherwise
-        """
-        return True  # Default implementation for scrapers without credentials
-    
-    def add_error(self, error_type: str, details: str, data: Optional[Dict] = None) -> None:
-        """Record an error for logging and monitoring.
-        
-        Args:
-            error_type (str): Category of error (e.g., 'rate_limit', 'parse_error')
-            details (str): Error description
-            data (Optional[Dict]): Additional error context
-        """
-        error_entry = {
-            'timestamp': datetime.utcnow(),
-            'type': error_type,
-            'details': details,
-            'data': data or {}
-        }
-        self.errors.append(error_entry)
-    
-    async def get_rate_limit_status(self) -> Dict[str, Any]:
-        """Get current rate limit status.
-        
-        Returns:
-            Dict containing current rate limit metrics
-        """
-        return await self.rate_limiter.get_status()
-    
-    def clear_errors(self) -> None:
-        """Clear error history."""
-        self.errors = []
-    
-    @abstractmethod
-    async def extract_contact_info(self, listing_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract contact information from raw listing data.
-        
-        Args:
-            listing_data (Dict[str, Any]): Raw data from platform API/scrape
-            
-        Returns:
-            Dict[str, Any]: Normalized contact information
-            
-        Raises:
-            ParseError: If contact information extraction fails
+            List[Dict[str, Any]]: Scraped data
         """
         pass
 
-    async def is_rate_limited(self) -> bool:
-        """Check if the scraper is currently rate-limited.
-        
-        Returns:
-            bool: True if rate limit is exceeded, False otherwise
+    async def scrape_paginated(
+        self, 
+        base_url: str, 
+        max_pages: int = 10, 
+        pagination_selector: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """
-        return not await self.rate_limiter.check_rate_limit()
-
-    async def log_scrape_activity(self, leads_found: int) -> None:
-        """Log scraper activity after a scrape operation.
+        Comprehensive paginated scraping method
         
         Args:
-            leads_found (int): Number of leads discovered in the scrape
+            base_url (str): Initial URL to start scraping
+            max_pages (int): Maximum number of pages to scrape
+            pagination_selector (Optional[str]): CSS selector for next page link
+        
+        Returns:
+            List[Dict[str, Any]]: Combined scraped data from all pages
         """
-        self.last_scrape = datetime.utcnow()
+        all_data = []
+        async for page_data in PaginationHandler.handle_pagination(
+            self, base_url, max_pages, pagination_selector
+        ):
+            all_data.append(page_data)
+        
+        return all_data
+
+    async def close(self):
+        """
+        Cleanup method to release all resources
+        """
+        if self._browser_manager:
+            await self._browser_manager.close_sessions()
