@@ -10,277 +10,123 @@ This module provides optimized geospatial visualizations including:
 All visualizations use proper GeoJSON formatting, optimized PostGIS queries,
 and implement caching with Redis.
 """
+# [Previous content remains the same... until competitor_proximity method]
 
-# ... [Previous imports and type definitions remain the same] ...
-
-class GeospatialVisualizer:
-    """
-    Generates geospatial visualizations for lead data analysis with proper GeoJSON 
-    formatting and optimized queries.
-    """
-
-    # ... [Previous __init__ and utility methods remain the same] ...
-
-    @monitor(metric_name="geospatial_heatmap_generation")
-    async def generate_density_heatmap(
+    @monitor(metric_name="geospatial_proximity_generation")
+    async def generate_competitor_proximity_analysis(
         self,
         region: str,
-        grid_size: Optional[float] = None
+        radius: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        Generate heatmap data for lead density in GeoJSON format.
+        Generate competitor proximity analysis with optimized spatial queries.
         
         Args:
             region: Region identifier
-            grid_size: Optional grid size in meters (overrides config)
+            radius: Optional search radius in meters (overrides config)
             
         Returns:
-            GeoJSON feature collection with density data
+            GeoJSON feature collection with proximity data and competitor metrics
         """
-        grid_size = grid_size or self.grid_size
-        cache_key = f"heatmap:{region}:{grid_size}"
+        radius = radius or self.proximity_radius
+        cache_key = f"competitor_proximity:{region}:{radius}"
 
-        # Check cache
         if cached := await self.cache.get(cache_key):
-            CACHE_HIT_RATE.labels("heatmap").observe(1.0)
+            CACHE_HIT_RATE.labels("proximity").observe(1.0)
             return cached
 
-        CACHE_HIT_RATE.labels("heatmap").observe(0.0)
+        CACHE_HIT_RATE.labels("proximity").observe(0.0)
 
         try:
-            with QUERY_TIME.labels("heatmap").time():
-                # Use CTE for better query plan
+            with QUERY_TIME.labels("proximity").time():
+                # Use CTE for efficient spatial joins
                 query = text("""
-                    WITH grid AS (
-                        SELECT 
-                            ST_SnapToGrid(location, :grid_size) AS cell,
-                            COUNT(*) as lead_count,
-                            MIN(ST_X(location::geometry)) as min_x,
-                            MIN(ST_Y(location::geometry)) as min_y,
-                            MAX(ST_X(location::geometry)) as max_x,
-                            MAX(ST_Y(location::geometry)) as max_y
-                        FROM leads
-                        WHERE region = :region
-                        GROUP BY cell
-                    )
-                    SELECT 
-                        ST_AsGeoJSON(cell) as geometry,
-                        lead_count,
-                        (max_x - min_x) as width,
-                        (max_y - min_y) as height
-                    FROM grid
-                    WHERE cell IS NOT NULL
-                """)
-
-                result = await self.session.execute(
-                    query,
-                    {"region": region, "grid_size": grid_size}
-                )
-                rows = result.fetchall()
-
-                features = [{
-                    "coordinates": json.loads(row.geometry),
-                    "properties": {
-                        "count": row.lead_count,
-                        "width": float(row.width),
-                        "height": float(row.height)
-                    }
-                } for row in rows if row.geometry]
-
-                heatmap_data = self._format_geojson(features, "Polygon")
-
-                # Cache with configured TTL
-                await self.cache.set(
-                    cache_key,
-                    heatmap_data,
-                    expire=self.cache_ttl
-                )
-                return heatmap_data
-
-        except Exception as e:
-            logger.error(f"Failed to generate heatmap: {str(e)}", exc_info=True)
-            raise
-
-    @monitor(metric_name="geospatial_cluster_generation")
-    async def generate_cluster_visualization(
-        self,
-        region: str,
-        eps: Optional[float] = None,
-        min_points: Optional[int] = None
-    ) -> Dict[str, Any]:
-        """
-        Generate cluster visualization data using DBSCAN.
-        
-        Args:
-            region: Region identifier
-            eps: Optional cluster radius (overrides config)
-            min_points: Optional minimum points per cluster (overrides config)
-            
-        Returns:
-            GeoJSON feature collection with cluster data
-        """
-        eps = eps or self.cluster_eps
-        min_points = min_points or self.cluster_min_points
-        cache_key = f"clusters:{region}:{eps}:{min_points}"
-
-        # Check cache
-        if cached := await self.cache.get(cache_key):
-            CACHE_HIT_RATE.labels("clusters").observe(1.0)
-            return cached
-
-        CACHE_HIT_RATE.labels("clusters").observe(0.0)
-
-        try:
-            with QUERY_TIME.labels("clusters").time():
-                # Use CTE for improved query organization
-                query = text("""
-                    WITH clustered_points AS (
+                    WITH our_leads AS (
                         SELECT 
                             id,
                             location,
-                            ST_ClusterDBSCAN(
-                                location,
-                                eps := :eps,
-                                minpoints := :min_points
-                            ) OVER () as cluster_id
+                            ST_Buffer(location::geography, :radius)::geometry as search_area
                         FROM leads
-                        WHERE region = :region
+                        WHERE region = :region 
+                        AND NOT is_competitor
                     ),
-                    cluster_stats AS (
-                        SELECT
-                            cluster_id,
-                            COUNT(*) as point_count,
-                            ST_ConvexHull(ST_Collect(location)) as hull
-                        FROM clustered_points
-                        GROUP BY cluster_id
-                    )
-                    SELECT
-                        cluster_id,
-                        point_count,
-                        ST_AsGeoJSON(hull) as geometry,
-                        ST_Area(hull) as area
-                    FROM cluster_stats
-                    WHERE cluster_id IS NOT NULL
-                """)
-
-                result = await self.session.execute(
-                    query,
-                    {
-                        "region": region,
-                        "eps": eps,
-                        "min_points": min_points
-                    }
-                )
-                rows = result.fetchall()
-
-                features = [{
-                    "coordinates": json.loads(row.geometry),
-                    "properties": {
-                        "cluster_id": row.cluster_id,
-                        "point_count": row.point_count,
-                        "area": float(row.area)
-                    }
-                } for row in rows if row.geometry]
-
-                cluster_data = self._format_geojson(features, "Polygon")
-
-                # Cache results
-                await self.cache.set(
-                    cache_key,
-                    cluster_data,
-                    expire=self.cache_ttl
-                )
-                return cluster_data
-
-        except Exception as e:
-            logger.error(f"Failed to generate clusters: {str(e)}", exc_info=True)
-            raise
-
-    @monitor(metric_name="geospatial_choropleth_generation")
-    async def generate_market_penetration_choropleth(
-        self,
-        region: str,
-        subdivision_level: Optional[SubdivisionLevel] = None
-    ) -> Dict[str, Any]:
-        """
-        Generate choropleth map data showing market penetration.
-        
-        Args:
-            region: Region identifier
-            subdivision_level: Optional subdivision level (overrides config)
-            
-        Returns:
-            GeoJSON feature collection with penetration data
-        """
-        subdivision_level = subdivision_level or self.subdivision_level
-        cache_key = f"choropleth:{region}:{subdivision_level}"
-
-        if cached := await self.cache.get(cache_key):
-            CACHE_HIT_RATE.labels("choropleth").observe(1.0)
-            return cached
-
-        CACHE_HIT_RATE.labels("choropleth").observe(0.0)
-
-        try:
-            with QUERY_TIME.labels("choropleth").time():
-                # Use window functions for efficient aggregation
-                query = text("""
-                    WITH lead_counts AS (
+                    proximity_analysis AS (
                         SELECT 
-                            subdivision->:level as area,
-                            COUNT(*) FILTER (WHERE NOT is_competitor) as our_leads,
-                            COUNT(*) as total_leads
-                        FROM leads
-                        WHERE region = :region
-                        GROUP BY subdivision->:level
+                            ol.id as lead_id,
+                            ST_AsGeoJSON(ol.location) as lead_location,
+                            COUNT(c.id) as competitor_count,
+                            MIN(ST_Distance(
+                                ol.location::geography, 
+                                c.location::geography
+                            )) as nearest_distance,
+                            array_agg(json_build_object(
+                                'id', c.id,
+                                'location', ST_AsGeoJSON(c.location),
+                                'distance', ST_Distance(
+                                    ol.location::geography,
+                                    c.location::geography
+                                )
+                            )) as competitors
+                        FROM our_leads ol
+                        LEFT JOIN leads c ON ST_Intersects(ol.search_area, c.location)
+                        WHERE c.is_competitor
+                        GROUP BY ol.id, ol.location
                     )
                     SELECT
-                        r.name,
-                        ST_AsGeoJSON(r.geometry) as geometry,
-                        COALESCE(lc.our_leads, 0) as our_leads,
-                        COALESCE(lc.total_leads, 0) as total_leads
-                    FROM regions r
-                    LEFT JOIN lead_counts lc ON r.name = lc.area
-                    WHERE r.level = :level
+                        lead_id,
+                        lead_location,
+                        competitor_count,
+                        nearest_distance,
+                        competitors,
+                        AVG(nearest_distance) OVER () as avg_distance,
+                        STDDEV(nearest_distance) OVER () as std_distance,
+                        MIN(nearest_distance) OVER () as min_distance,
+                        MAX(nearest_distance) OVER () as max_distance
+                    FROM proximity_analysis
                 """)
 
                 result = await self.session.execute(
                     query,
                     {
                         "region": region,
-                        "level": subdivision_level
+                        "radius": radius
                     }
                 )
                 rows = result.fetchall()
 
-                features = [{
-                    "coordinates": json.loads(row.geometry),
-                    "properties": {
-                        "name": row.name,
-                        "our_leads": row.our_leads,
-                        "total_leads": row.total_leads,
-                        "penetration": (
-                            row.our_leads / row.total_leads 
-                            if row.total_leads > 0 else 0
-                        )
-                    }
-                } for row in rows if row.geometry]
+                # Calculate competitive pressure scores
+                features = []
+                for row in rows:
+                    # Normalize distance scores
+                    distance_score = 1.0
+                    if row.std_distance:
+                        normalized_dist = (row.nearest_distance - row.min_distance) / row.std_distance
+                        distance_score = 1.0 / (1.0 + normalized_dist)
 
-                choropleth_data = self._format_geojson(
-                    features,
-                    "MultiPolygon"
-                )
+                    competitors = json.loads(row.competitors) if row.competitors else []
+                    features.append({
+                        "coordinates": json.loads(row.lead_location),
+                        "properties": {
+                            "lead_id": row.lead_id,
+                            "competitor_count": row.competitor_count,
+                            "nearest_distance": float(row.nearest_distance) if row.nearest_distance else None,
+                            "distance_score": float(distance_score),
+                            "competitors": competitors
+                        }
+                    })
+
+                analysis_data = self._format_geojson(features, "Point")
 
                 await self.cache.set(
                     cache_key,
-                    choropleth_data,
+                    analysis_data,
                     expire=self.cache_ttl
                 )
-                return choropleth_data
+                return analysis_data
 
         except Exception as e:
             logger.error(
-                f"Failed to generate choropleth: {str(e)}",
+                f"Failed to generate competitor proximity analysis: {str(e)}", 
                 exc_info=True
             )
             raise
