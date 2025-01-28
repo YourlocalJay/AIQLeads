@@ -12,7 +12,7 @@ class GeospatialVisualizer:
     """
     Generates geospatial visualizations for lead data analysis.
     """
-    
+
     def __init__(
         self,
         session: AsyncSession,
@@ -22,7 +22,7 @@ class GeospatialVisualizer:
         self.session = session
         self.cache = cache
         self.cache_ttl = cache_ttl
-    
+
     @monitor(metric_name="geospatial_heatmap_generation")
     async def generate_density_heatmap(
         self,
@@ -31,20 +31,20 @@ class GeospatialVisualizer:
     ) -> Dict[str, Any]:
         """Generate heatmap data for lead density."""
         cache_key = f"heatmap:{region}:{grid_size}"
-        
+
         if cached := await self.cache.get(cache_key):
             return cached
-            
+
         query = select([
             func.ST_SnapToGrid(Lead.location, grid_size).label('cell'),
             func.count().label('count')
         ]).where(
             Lead.region == region
         ).group_by('cell')
-        
+
         result = await self.session.execute(query)
         rows = result.fetchall()
-        
+
         heatmap_data = {
             'type': 'FeatureCollection',
             'features': [{
@@ -55,11 +55,11 @@ class GeospatialVisualizer:
                 }
             } for row in rows]
         }
-        
+
         await self.cache.set(cache_key, heatmap_data, expire=self.cache_ttl)
         return heatmap_data
-    
-    @monitor(metric_name="geospatial_cluster_generation")    
+
+    @monitor(metric_name="geospatial_cluster_generation")
     async def generate_cluster_visualization(
         self,
         region: str,
@@ -68,10 +68,10 @@ class GeospatialVisualizer:
     ) -> Dict[str, Any]:
         """Generate cluster visualization data."""
         cache_key = f"clusters:{region}:{eps}:{min_points}"
-        
+
         if cached := await self.cache.get(cache_key):
             return cached
-            
+
         query = select([
             Lead.location,
             func.ST_ClusterDBSCAN(
@@ -80,17 +80,17 @@ class GeospatialVisualizer:
                 minpoints=min_points
             ).over().label('cluster_id')
         ]).where(Lead.region == region)
-        
+
         result = await self.session.execute(query)
         rows = result.fetchall()
-        
+
         clusters = {}
         for row in rows:
             cluster_id = row.cluster_id if row.cluster_id is not None else -1
             if cluster_id not in clusters:
                 clusters[cluster_id] = []
             clusters[cluster_id].append(json.loads(row.location))
-        
+
         visualization_data = {
             'type': 'FeatureCollection',
             'features': [{
@@ -104,10 +104,10 @@ class GeospatialVisualizer:
                 }
             } for cluster_id, points in clusters.items()]
         }
-        
+
         await self.cache.set(cache_key, visualization_data, expire=self.cache_ttl)
         return visualization_data
-    
+
     @monitor(metric_name="geospatial_choropleth_generation")
     async def generate_market_penetration_choropleth(
         self,
@@ -116,10 +116,10 @@ class GeospatialVisualizer:
     ) -> Dict[str, Any]:
         """Generate choropleth map data for market penetration."""
         cache_key = f"choropleth:{region}:{subdivision_level}"
-        
+
         if cached := await self.cache.get(cache_key):
             return cached
-            
+
         query = select([
             Lead.subdivision[subdivision_level].label('area'),
             func.count().filter(Lead.is_competitor == False).label('our_leads'),
@@ -127,10 +127,10 @@ class GeospatialVisualizer:
         ]).where(
             Lead.region == region
         ).group_by('area')
-        
+
         result = await self.session.execute(query)
         rows = result.fetchall()
-        
+
         choropleth_data = {
             'type': 'FeatureCollection',
             'features': [{
@@ -143,10 +143,10 @@ class GeospatialVisualizer:
                 }
             } for row in rows]
         }
-        
+
         await self.cache.set(cache_key, choropleth_data, expire=self.cache_ttl)
         return choropleth_data
-    
+
     @monitor(metric_name="geospatial_proximity_generation")
     async def generate_competitor_proximity_analysis(
         self,
@@ -155,10 +155,10 @@ class GeospatialVisualizer:
     ) -> Dict[str, Any]:
         """Generate competitor proximity analysis visualization."""
         cache_key = f"competitor_proximity:{region}:{radius}"
-        
+
         if cached := await self.cache.get(cache_key):
             return cached
-            
+
         # First get our leads
         our_leads_query = select([
             Lead.location,
@@ -167,9 +167,9 @@ class GeospatialVisualizer:
             Lead.region == region,
             Lead.is_competitor == False
         )
-        
+
         our_leads = await self.session.execute(our_leads_query)
-        
+
         # For each lead, find nearby competitors
         proximity_data = []
         for lead in our_leads:
@@ -181,9 +181,9 @@ class GeospatialVisualizer:
                 Lead.is_competitor == True,
                 func.ST_DWithin(Lead.location, lead.location, radius)
             ).order_by('distance')
-            
+
             nearby = await self.session.execute(nearby_query)
-            
+
             proximity_data.append({
                 'lead_id': lead.id,
                 'location': json.loads(lead.location),
@@ -192,7 +192,7 @@ class GeospatialVisualizer:
                     'distance': float(comp.distance)
                 } for comp in nearby]
             })
-        
+
         analysis_data = {
             'type': 'FeatureCollection',
             'features': [{
@@ -209,6 +209,6 @@ class GeospatialVisualizer:
                 }
             } for data in proximity_data]
         }
-        
+
         await self.cache.set(cache_key, analysis_data, expire=self.cache_ttl)
         return analysis_data
