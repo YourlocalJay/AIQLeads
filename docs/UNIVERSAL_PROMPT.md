@@ -1,110 +1,183 @@
-# Universal Prompt for AIQLeads Project (Updated January 25, 2025)
+# Universal Prompt for AIQLeads Project (Updated January 27, 2025)
 
 ## Repository Information
 - Owner: YourlocalJay
 - Repository: AIQLeads 
-- Access Level: Full repository access for Claude 3.5 Sonnet
+- Access Level: Full repository access
 - Type: Private production repository
+- Branch Strategy: GitFlow with protected main branch
 
 ## Project Status (Current) 
+
 ### Completed Components
 1. Core Infrastructure
-   - PostgreSQL with PostGIS integration
-   - Async request handling system 
-   - Redis persistence with failover
-   - Test infrastructure (94% coverage)
+   - PostgreSQL 15.4 with PostGIS 3.4
+   - Async request handling via FastAPI
+   - Redis 7.2 persistence layer
+   - PyTest framework (94% coverage)
 2. User Management System
-   - Model implementation
-   - Schema validation
-   - Authentication flows
-   - Profile management
+   - JWT-based authentication
+   - Role-based access control
+   - Password hashing with Argon2
+   - Session management with Redis
 3. Lead Model Architecture
+   - Pydantic schemas
+   - SQLAlchemy ORM models
+   - Geospatial indexing
+   - Async database operations
 4. Data Collection Framework
+   - Rate-limited API clients
+   - Error retry mechanisms
+   - Circuit breaker pattern
+   - Connection pooling
 5. Rate Limiting System
-   - Redis-backed with metrics
-   - Circuit breaker implementation
-   - Alert integration
-   - Comprehensive testing
+   - Token bucket algorithm
+   - Redis-backed metrics
+   - Dynamic rate adjustment
+   - Multi-tenant support
 6. Validation System
-   - Schema validation
-   - Error handling
-   - Performance monitoring
-   - Documentation coverage
+   - JSON Schema validation
+   - Custom validation rules
+   - Error aggregation
+   - Real-time validation
+7. API Integration Framework
+   - OAuth2 support
+   - Rate limit handling
+   - Error normalization
+   - Retry mechanisms
+8. Market Insights Module
+   - Geospatial analytics
+   - Time series analysis
+   - Market trend detection
+   - Real-time updates
+9. Schema Monitoring System
+   - Prometheus metrics
+   - Grafana dashboards
+   - Alert routing
+   - Performance tracking
+10. Parser Framework
+    - ML-based validation
+    - Fraud detection (95% accuracy)
+    - PostGIS integration
+    - Cached results (75% hit rate)
+11. Aggregator Pipeline
+    - LRU caching (1000 items)
+    - Batch sizes (100-1000)
+    - Connection pooling (50 max)
+    - Concurrent processing (20 workers)
+12. Test Infrastructure
+    - Parser testing complete
+    - Scraper testing implemented
+    - Integration tests added
+    - Performance benchmarks configured
 
 ### Active Development
-1. API Integration Framework
-   - Error handling enhancement
-   - Retry mechanism
-   - Performance monitoring
-2. Testing Improvements
-   - Schema validation coverage
-   - Performance benchmarks
-   - Error handling verification
-3. Documentation Refinement
-   - API validation details
-   - Monitoring metrics
-   - Performance standards
+1. Cart Management System (80% complete)
+   - Redis integration complete
+   - Session management optimized
+   - Cart operations implemented
+   Technical Debt:
+   - Payment integration
+   - Premium features
+   - Security review
+   - Performance optimization
 
-## Technical Architecture
-```plaintext
-AIQLeads/
-├── src/
-│   ├── aggregator/          
-│   │   ├── scrapers/        # Rate limiters integrated
-│   │   └── parsers/         # Enhancement ongoing
-│   ├── services/
-│   │   ├── pricing/         # Pending
-│   │   ├── validation/      # Schema validation
-│   │   └── recommendations/ # Q1 2025
-│   ├── models/             # Complete
-│   ├── schemas/            # Complete
-│   └── config/             # Environment management
-└── tests/
-    ├── aggregator/         # 95% coverage
-    ├── services/          # 94% coverage
-    └── integration/       # Ongoing updates
-```
+2. AI Recommendations (40% complete)
+   - Architecture defined
+   - Feature pipeline started
+   - Basic workflow implemented
+   - Feature engineering foundations laid
+   Technical Debt:
+   - Model training setup
+   - A/B testing framework
+   - Production deployment
+   - Optimization
 
-## Development Guidelines
-1. Code Standards
-   - 94% test coverage minimum
-   - Complete type hints
-   - Documentation requirement
-   - Schema validation enforcement
-2. Quality Requirements
-   - Unit/integration tests
-   - Performance benchmarks
-   - Alert configuration
-   - Redis persistence
-3. Validation Requirements
-   - Comprehensive schema validation
-   - Error handling specifics
-   - Performance metrics
-   - Documentation coverage
+3. Monitoring System (90% complete)
+   - Core metrics implemented
+   - Dashboards configured
+   - Alerts defined
+   Technical Debt:
+   - Additional alert rules
+   - Dashboard refinements
+   - Documentation
+   - Performance tuning
 
-## Current Development Notes
-1. Latest Enhancements
-   - API documentation updates
-   - Schema validation system
-   - Error handling standardization
+## Current Focus
+
+### AI Recommendations Development (7 weeks remaining)
+1. Feature Engineering Pipeline (Current Sprint)
+   - Exception handling framework ✓
+   - Base preprocessor implementation ✓
+   - Remaining tasks:
+     - Data cleaner implementation
+     - Feature extractors
+     - Validation framework
+     - Integration testing
+
+2. Week 3-4: Model Infrastructure
+   - Training pipeline
+   - Model architecture
+   - Version control
+   - Validation system
+
+3. Week 5-6: Service Integration
+   - API endpoints
+   - Cache layer
+   - Load balancing
+   - Error handling
+
+4. Week 7: Production Deployment
+   - Monitoring setup
+   - A/B testing
+   - Documentation
+   - Performance tuning
+
+### Cart Management (4 weeks)
+1. Week 1-2: Payment Integration
+   - Gateway setup
+   - Error handling
+   - Transaction logging
+   - Security measures
+
+2. Week 2-3: Premium Features
+   - Hold times
+   - Priority access
+   - Bulk operations
+   - Custom limits
+
+3. Week 3-4: Production Readiness
+   - Security audit
+   - Performance testing
+   - Documentation
    - Monitoring integration
-2. Next Steps
-   - Complete API integration
-   - Enhance test coverage
-   - Update documentation
-   - Implement monitoring
 
-## Usage Instructions
-For development:
-1. Review UPDATE.md for status
-2. Follow established patterns
-3. Maintain test coverage
-4. Update documentation
-5. Validate schema compliance
+### Monitoring System (2 weeks)
+1. Week 1: Enhancement
+   - Additional metrics
+   - Alert refinement
+   - Dashboard optimization
+   - Performance tuning
 
-For repository operations:
-1. Branch from main
-2. Detailed commit messages
-3. CI/CD compliance
-4. Reference documentation
-5. Schema validation checks
+2. Week 2: Documentation
+   - Setup guides
+   - Maintenance procedures
+   - Alert handling
+   - Troubleshooting guides
+
+## Next Milestone
+Target: February 15, 2025
+Deliverable: AI Recommendations MVP Release
+
+## Performance Requirements
+- API Response Time: p95 < 200ms
+- Lead Processing: 100+ leads/second
+- Model Inference: < 100ms
+- Cache Hit Rate: > 80%
+- Error Rate: < 0.1%
+
+## Recent Updates
+- Enhanced exception handling framework with structured logging
+- Implemented base preprocessor with configuration validation
+- Added metrics tracking for feature engineering pipeline
+- Improved error context and tracing capabilities
