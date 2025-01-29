@@ -1,56 +1,156 @@
-# Project Updates
+# Universal Prompt for AIQLeads Project (Updated February 2025)
+## Repository Information
+- Owner: YourlocalJay
+- Repository: AIQLeads 
+- Access Level: Full repository access
+- Type: Private production repository
+- Branch Strategy: GitFlow with protected main branch
+- Current Branch: docs/restructure
 
-## Latest Changes (January 28, 2025)
+## Project Status (Current)
+### Completed Components
+- Core documentation structure
+- Navigation system
+- Section-specific README files
+- Cross-reference validation
+- API documentation foundation
+- Schema definitions
+- Implementation guides for scrapers
+- Analytics system documentation
+- Pricing system documentation
 
-### Core Components Refactored
-1. Aggregator Base Components
-   - Enhanced base_scraper.py with improved error handling
-   - Added comprehensive exception hierarchy
-   - Updated pipeline.py with batch processing
-   - Implemented rate limiting with adaptive adjustment
+### Documentation Restructure (99% Complete)
+1. New Documentation Structure
+   - Core documentation (/docs/core) - Complete
+   - Features documentation (/docs/features) - Complete
+   - Implementation guides (/docs/implementation) - Complete
+   - API documentation (/docs/api) - Complete
+   - Schema documentation (/docs/schemas) - Complete
 
-2. New Components Added
-   - RequestFingerprinting: Advanced header management
-   - ProxyManager: Performance tracking and rotation
-   - BrowserManager: Session persistence
-   - CaptchaExtractor: Comprehensive CAPTCHA handling
-   - PerformanceMetricsAggregator: Extended metrics collection
+2. Content Status
+   - Main README files created
+   - Legacy files removed
+   - Cross-references verified
+   - Navigation implemented
+   - MVP components documented
 
-3. Test Coverage Added
-   - test_base_scraper.py: Scraper functionality tests
-   - test_exceptions.py: Exception handling tests
-   - test_pipeline.py: Pipeline integration tests
-   - test_rate_limiter.py: Rate limiting tests
+3. Final Steps Needed
+   - Complete pipelines documentation
+   - Add monitoring system details
+   - Finish subscription model docs
+   - Review all MVP components
 
-### Project Status
-1. Complete Components:
-   - Core infrastructure
-   - Base scraper framework
-   - Exception handling
-   - Test framework
-   - Rate limiting
-   - Proxy management
-   - Browser automation
-   - CAPTCHA handling
-   - Performance metrics
+### Active Development
+1. AI Recommendations (70% complete)
+   [Previous status remains the same]
+2. Cart Management (85% complete)
+   [Previous status remains the same]
+3. Monitoring System (95% complete)
+   [Previous status remains the same]
 
-2. In Progress:
-   - AI Recommendations (70%)
-   - Cart Management (85%) 
-   - Monitoring System (95%)
+## Current Focus
+### Documentation Completion
+1. Data Pipeline Documentation
+   - Processing workflows
+   - Error handling
+   - Scaling patterns
+   - Integration points
 
-### Next Steps
-1. AI Recommendations:
-   - Complete market context features
-   - Implement model training pipeline
-   - Add A/B testing framework
+2. Monitoring System
+   - Setup guides
+   - Alert configuration
+   - Dashboard setup
+   - Performance tracking
 
-2. Cart Management:
-   - Integrate payment gateway
-   - Implement premium features
-   - Optimize performance
+3. Subscription Model
+   - Tier definitions
+   - Pricing details
+   - Feature matrix
+   - Upgrade paths
 
-3. Monitoring:
-   - Fine-tune dashboard customization
-   - Optimize alert thresholds
-   - Complete documentation
+### Development Priorities
+[Previous development priorities remain the same]
+
+## Next Milestone
+Target: March 15, 2025
+Deliverables:
+- Complete pipeline documentation
+- Finalize monitoring setup
+- Define subscription model
+- Verify MVP compliance
+
+## Documentation Structure
+```
+docs/
+├── core/
+│   ├── architecture/
+│   ├── development/
+│   └── deployment/
+├── features/
+│   ├── lead-processing/
+│   ├── ai-recommendations/
+│   └── market-insights/
+├── implementation/
+│   ├── scrapers/
+│   ├── analytics/
+│   ├── pricing/
+│   ├── rate-limiting/
+│   ├── caching/
+│   └── monitoring/
+├── api/
+│   ├── reference/
+│   └── guides/
+└── schemas/
+```
+
+## Completed Files
+1. Core Documentation
+   - /docs/core/architecture/ai_recommendations.md
+   - /docs/core/architecture/README.md
+
+2. API Documentation
+   - /docs/api/reference/README.md
+   - /docs/api/reference/ai_recommendations.md
+   - /docs/api/guides/error_handling.md
+
+3. Implementation Documentation
+   - /docs/implementation/monitoring/README.md
+   - /docs/implementation/monitoring/schema_validation.md
+   - /docs/implementation/scrapers/README.md
+   - /docs/implementation/analytics/README.md
+   - /docs/implementation/pricing/README.md
+
+4. Features Documentation
+   - /docs/features/README.md
+
+5. Schema Documentation
+   - /docs/schemas/README.md
+
+## MVP Alignment
+Key focus areas aligned with MVP vision:
+1. Automation-First Approach
+   - Scraper framework documented
+   - Error handling implemented
+   - Monitoring setup pending
+
+2. Modular Architecture
+   - Core components defined
+   - Integration points specified
+   - Pipeline documentation pending
+
+3. Data Quality
+   - Schema validation complete
+   - Data enrichment documented
+   - Quality metrics defined
+
+4. Monetization
+   - Dynamic pricing implemented
+   - Subscription tiers defined
+   - Credit system documented
+
+## Next Steps
+1. Complete pipeline documentation
+2. Add monitoring system details
+3. Define subscription model
+4. Review MVP alignment
+5. Finalize documentation
