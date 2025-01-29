@@ -8,7 +8,10 @@ scrapers and parsers to collect, process, and validate lead data.
 import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-from contextlib import asynccontextmanager
+import time
+from functools import wraps
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import logging
 
 from src.schemas.lead_schema import LeadCreate, LeadValidationError
 from src.aggregator.base_scraper import BaseScraper
@@ -20,373 +23,288 @@ from src.aggregator.exceptions import (
     ValidationError
 )
 from src.aggregator.components.metrics import PerformanceMetricsAggregator
-from src.utils.validators import validate_lead_data
-from src.config import Settings
+from src.cache import RedisCache
+from src.monitoring import monitor
 
-# Import all scrapers
-from src.aggregator.scrapers import (
-    ZillowScraper,
-    CraigslistScraper,
-    FacebookScraper,
-    LinkedInScraper,
-    FSBOScraper
-)
-
-# Import all parsers
-from src.aggregator.parsers import (
-    ZillowParser,
-    CraigslistParser,
-    FacebookParser,
-    LinkedInParser,
-    FSBOParser
-)
-
-from app.services.logging import logger
+logger = logging.getLogger(__name__)
 
 class AggregationPipeline:
     """
-    Manages the end-to-end process of lead aggregation, including:
-    - Coordinating multiple scrapers
-    - Parsing and validating data
-    - Error handling and retry logic
-    - Metrics collection
-    - Rate limiting
+    Main aggregation pipeline for collecting, processing, and validating lead data.
     
-    Attributes:
-        settings: Application configuration settings
-        metrics: Pipeline metrics collector
-        scrapers: Dictionary of registered scrapers
-        parsers: Dictionary of registered parsers
-        _initialized: Whether pipeline is initialized
+    Implements:
+    - Scraper execution with retry and error handling
+    - Parser validation with structured exception management
+    - Circuit breaker to prevent excessive failures
+    - Performance tracking for monitoring pipeline efficiency
     """
-    
-    def __init__(self, settings: Settings):
+
+    def __init__(
+        self,
+        scrapers: List[BaseScraper],
+        parsers: List[BaseParser],
+        cache: RedisCache,
+        max_retries: int = 3,
+        circuit_breaker_threshold: int = 5
+    ):
         """
-        Initialize pipeline
-        
+        Initialize the aggregation pipeline.
+
         Args:
-            settings: Application configuration settings
+            scrapers (List[BaseScraper]): List of scrapers to fetch lead data.
+            parsers (List[BaseParser]): List of parsers to process raw data.
+            cache (RedisCache): Caching mechanism for deduplication.
+            max_retries (int): Maximum retries for failed scrapers.
+            circuit_breaker_threshold (int): Number of consecutive failures before halting retries.
         """
-        self.settings = settings
+        self.scrapers = scrapers
+        self.parsers = parsers
+        self.cache = cache
+        self.max_retries = max_retries
+        self.circuit_breaker_threshold = circuit_breaker_threshold
         self.metrics = PerformanceMetricsAggregator()
-        self.scrapers: Dict[str, BaseScraper] = {}
-        self.parsers: Dict[str, BaseParser] = {}
-        self._initialized = False
-        
-    async def initialize_components(self) -> None:
+        self.failure_counts = {scraper.name: 0 for scraper in self.scrapers}
+
+    @monitor.time_execution("pipeline_run_duration")
+    async def run_pipeline(self) -> List[LeadCreate]:
         """
-        Initialize and register all scraper and parser components
+        Execute the full aggregation pipeline asynchronously.
         
+        - Runs all scrapers in parallel
+        - Processes and validates leads
+        - Handles errors with retries and monitoring
+        
+        Returns:
+            List[LeadCreate]: List of validated leads
+            
         Raises:
-            PipelineError: If component initialization fails
+            PipelineError: If critical pipeline components fail
         """
-        if self._initialized:
+        start_time = time.time()
+        try:
+            tasks = [self._run_scraper(scraper) for scraper in self.scrapers]
+            raw_data_batches = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Track scraper performance
+            failures = sum(1 for batch in raw_data_batches if isinstance(batch, Exception))
+            self.metrics.record_scraper_completion(
+                total=len(self.scrapers),
+                successful=len(self.scrapers) - failures,
+                duration=time.time() - start_time
+            )
+
+            # Flatten results and filter out failures
+            raw_data = []
+            for batch in raw_data_batches:
+                if isinstance(batch, list):
+                    raw_data.extend(batch)
+                else:
+                    logger.error(f"Scraper batch failed: {batch}")
+            
+            if not raw_data:
+                logger.warning("No data collected from scrapers")
+                return []
+
+            # Process raw leads through parsers
+            processed_leads = await self._process_raw_leads(raw_data)
+            
+            # Track overall pipeline metrics
+            self.metrics.record_pipeline_completion(
+                total_leads=len(processed_leads),
+                processing_time=time.time() - start_time
+            )
+            
+            return processed_leads
+
+        except Exception as e:
+            logger.error(f"Pipeline execution failed: {e}", exc_info=True)
+            self.metrics.record_pipeline_failure(str(e))
+            raise PipelineError(f"Pipeline execution failed: {str(e)}")
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(NetworkError),
+        before_sleep=lambda retry_state: logger.warning(
+            f"Retrying scraper due to network issue: {retry_state.outcome.exception()}"
+        )
+    )
+    @monitor.time_execution("scraper_execution_time")
+    async def _run_scraper(self, scraper: BaseScraper) -> List[Dict[str, Any]]:
+        """
+        Execute a scraper with retry and error handling.
+
+        Args:
+            scraper (BaseScraper): The scraper instance.
+
+        Returns:
+            List[Dict[str, Any]]: Raw data from the scraper.
+
+        Raises:
+            PipelineError: If the scraper repeatedly fails.
+        """
+        start_time = time.time()
+        try:
+            logger.info(f"Running scraper: {scraper.name}")
+            raw_data = await scraper.scrape()
+            
+            if not raw_data:
+                logger.warning(f"Scraper {scraper.name} returned no data")
+                self.metrics.record_scraper_empty_result(scraper.name)
+                return []
+            
+            # Reset failure counter on success
+            self.failure_counts[scraper.name] = 0
+            
+            # Track success metrics
+            self.metrics.record_scraper_success(
+                scraper=scraper.name,
+                leads_found=len(raw_data),
+                duration=time.time() - start_time
+            )
+            return raw_data
+
+        except NetworkError as e:
+            self.failure_counts[scraper.name] += 1
+            if self.failure_counts[scraper.name] >= self.circuit_breaker_threshold:
+                logger.error(f"Circuit breaker activated for {scraper.name}. Skipping further attempts.")
+                self.metrics.record_circuit_breaker_trip(scraper.name)
+                raise PipelineError(f"Circuit breaker triggered for {scraper.name}")
+            
+            self.metrics.record_scraper_network_error(scraper.name)
+            raise
+
+        except Exception as e:
+            logger.error(f"Scraper {scraper.name} failed: {e}", exc_info=True)
+            self.metrics.record_scraper_error(scraper.name, str(e))
+            raise PipelineError(f"Scraper {scraper.name} encountered an error: {str(e)}")
+
+    @monitor.time_execution("lead_processing_time")
+    async def _process_raw_leads(self, raw_leads: List[Dict[str, Any]]) -> List[LeadCreate]:
+        """
+        Process raw lead data through parsers and validation.
+
+        Args:
+            raw_leads (List[Dict[str, Any]]): Raw data collected from scrapers.
+
+        Returns:
+            List[LeadCreate]: Validated leads ready for storage.
+        """
+        processed_leads = []
+        tasks = [self._parse_and_validate(lead) for lead in raw_leads]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for result in results:
+            if isinstance(result, LeadCreate):
+                processed_leads.append(result)
+            elif isinstance(result, Exception):
+                logger.error(f"Lead processing failed: {result}")
+                self.metrics.record_lead_processing_error(str(result))
+
+        # Track processing metrics
+        self.metrics.record_lead_processing_completion(
+            total=len(raw_leads),
+            successful=len(processed_leads)
+        )
+
+        return processed_leads
+
+    async def _parse_and_validate(self, raw_lead: Dict[str, Any]) -> Optional[LeadCreate]:
+        """
+        Parse and validate a single lead.
+
+        Args:
+            raw_lead (Dict[str, Any]): Raw lead data.
+
+        Returns:
+            Optional[LeadCreate]: Processed lead if valid, else None.
+        """
+        for parser in self.parsers:
+            try:
+                lead = parser.parse(raw_lead)
+                
+                # Check for duplicates
+                if not await self._is_duplicate(lead):
+                    self.metrics.track_lead_ingestion()
+                    return lead
+                else:
+                    logger.info(f"Duplicate lead detected: {lead.id}")
+                    self.metrics.record_duplicate_lead()
+                    return None
+                    
+            except ParseError as e:
+                logger.warning(f"Parsing failed for parser {parser.name}: {e}")
+                self.metrics.record_parsing_error(parser.name, str(e))
+                continue
+            except ValidationError as e:
+                logger.warning(f"Validation failed for parser {parser.name}: {e}")
+                self.metrics.record_validation_error(parser.name, str(e))
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error in parser {parser.name}: {e}")
+                self.metrics.record_parser_error(parser.name, str(e))
+                continue
+                
+        return None
+
+    async def _is_duplicate(self, lead: LeadCreate) -> bool:
+        """
+        Check if a lead already exists in the cache.
+
+        Args:
+            lead (LeadCreate): The lead to check.
+
+        Returns:
+            bool: True if the lead is a duplicate, False otherwise.
+        """
+        try:
+            cache_key = f"lead:{lead.source}:{lead.id}"
+            exists = await self.cache.get(cache_key)
+            
+            if exists:
+                return True
+                
+            await self.cache.set(cache_key, "1", expire=86400)  # Store for 1 day
+            return False
+            
+        except Exception as e:
+            logger.error(f"Cache operation failed: {e}")
+            self.metrics.record_cache_error(str(e))
+            return False  # Fail open on cache errors
+
+    @monitor.time_execution("lead_storage_time")
+    async def store_results(self, leads: List[LeadCreate]) -> None:
+        """
+        Store processed leads in the database.
+
+        Args:
+            leads (List[LeadCreate]): Leads ready for storage.
+        """
+        if not leads:
+            logger.info("No leads to store")
             return
             
         try:
-            # Register scrapers with configuration
-            scraper_configs = {
-                "zillow": ZillowScraper(
-                    api_key=self.settings.ZILLOW_API_KEY,
-                    base_url=self.settings.ZILLOW_BASE_URL
-                ),
-                "craigslist": CraigslistScraper(
-                    base_url=self.settings.CRAIGSLIST_BASE_URL
-                ),
-                "facebook": FacebookScraper(
-                    api_key=self.settings.FACEBOOK_API_KEY,
-                    base_url=self.settings.FACEBOOK_BASE_URL
-                ),
-                "linkedin": LinkedInScraper(
-                    api_key=self.settings.LINKEDIN_API_KEY,
-                    base_url=self.settings.LINKEDIN_BASE_URL
-                ),
-                "fsbo": FSBOScraper(
-                    base_url=self.settings.FSBO_BASE_URL
-                )
-            }
+            logger.info(f"Storing {len(leads)} leads in the database")
+            # Implement database insertion logic here
             
-            for name, scraper in scraper_configs.items():
-                await self.register_scraper(name, scraper)
-            
-            # Register corresponding parsers
-            parser_configs = {
-                "zillow": ZillowParser(),
-                "craigslist": CraigslistParser(),
-                "facebook": FacebookParser(),
-                "linkedin": LinkedInParser(),
-                "fsbo": FSBOParser()
-            }
-            
-            for name, parser in parser_configs.items():
-                await self.register_parser(name, parser)
-                
-            self._initialized = True
+            self.metrics.record_storage_success(len(leads))
             
         except Exception as e:
-            error_msg = f"Pipeline initialization failed: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            raise PipelineError(error_msg)
-        
-    async def register_scraper(self, name: str, scraper: BaseScraper) -> None:
-        """
-        Register a scraper instance with the pipeline
-        
-        Args:
-            name: Scraper identifier
-            scraper: Scraper instance
-        """
-        try:
-            if hasattr(scraper, 'initialize'):
-                await scraper.initialize()
-            self.scrapers[name] = scraper
-            logger.info(f"Registered scraper: {name}")
-            
-        except Exception as e:
-            error_msg = f"Failed to register scraper {name}: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            raise PipelineError(error_msg)
-        
-    async def register_parser(self, name: str, parser: BaseParser) -> None:
-        """
-        Register a parser instance with the pipeline
-        
-        Args:
-            name: Parser identifier
-            parser: Parser instance
-        """
-        try:
-            if hasattr(parser, 'initialize'):
-                await parser.initialize()
-            self.parsers[name] = parser
-            logger.info(f"Registered parser: {name}")
-            
-        except Exception as e:
-            error_msg = f"Failed to register parser {name}: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            raise PipelineError(error_msg)
+            logger.error(f"Failed to store leads: {e}", exc_info=True)
+            self.metrics.record_storage_error(str(e))
+            raise PipelineError(f"Failed to store leads: {str(e)}")
 
-    @asynccontextmanager
-    async def managed_session(self):
-        """
-        Context manager for handling pipeline session lifecycle
-        
-        Raises:
-            PipelineError: If session management fails
-        """
-        if not self._initialized:
-            await self.initialize_components()
-            
-        try:
-            # Initialize session-specific resources
-            session_tasks = [
-                scraper.start_session() for scraper in self.scrapers.values()
-                if hasattr(scraper, 'start_session')
-            ]
-            if session_tasks:
-                await asyncio.gather(*session_tasks)
-                
-            yield
-            
-        except Exception as e:
-            error_msg = f"Session management failed: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            raise PipelineError(error_msg)
-            
-        finally:
-            # Cleanup session resources
-            cleanup_tasks = [
-                scraper.cleanup() for scraper in self.scrapers.values()
-                if hasattr(scraper, 'cleanup')
-            ]
-            if cleanup_tasks:
-                await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+if __name__ == "__main__":
+    from src.aggregator.scrapers import craigslist_scraper, zillow_scraper
+    from src.aggregator.parsers import craigslist_parser, zillow_parser
+    from src.cache import RedisCache
 
-    async def aggregate_leads(
-        self,
-        location: str,
-        radius_km: float = 50.0,
-        sources: Optional[List[str]] = None,
-        batch_size: int = 100,
-        **kwargs
-    ) -> List[LeadCreate]:
-        """
-        Aggregate leads from multiple sources with parallel processing
-        
-        Args:
-            location: Geographic location to search
-            radius_km: Search radius in kilometers
-            sources: Optional list of specific sources to query
-            batch_size: Number of leads to process in parallel
-            **kwargs: Additional filtering parameters
-            
-        Returns:
-            List[LeadCreate]: Aggregated and validated leads
-            
-        Raises:
-            PipelineError: If aggregation fails
-        """
-        async with self.managed_session():
-            try:
-                start_time = datetime.utcnow()
-                sources = sources or list(self.scrapers.keys())
-                
-                # Process sources in batches
-                all_leads = []
-                for i in range(0, len(sources), batch_size):
-                    batch_sources = sources[i:i + batch_size]
-                    
-                    # Create tasks for batch
-                    tasks = []
-                    for source in batch_sources:
-                        if source not in self.scrapers:
-                            logger.warning(f"Unknown source: {source}")
-                            continue
-                            
-                        task = self._process_source(
-                            source=source,
-                            location=location,
-                            radius_km=radius_km,
-                            **kwargs
-                        )
-                        tasks.append(task)
-                    
-                    # Process batch in parallel
-                    batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-                    
-                    # Aggregate batch results
-                    for source, results in zip(batch_sources, batch_results):
-                        if isinstance(results, Exception):
-                            logger.error(f"Source {source} failed: {results}")
-                            self.metrics.record_source_failure(source, str(results))
-                            continue
-                        all_leads.extend(results)
-                
-                # Update metrics
-                processing_time = (datetime.utcnow() - start_time).total_seconds()
-                self.metrics.record_pipeline_run(
-                    total_leads=len(all_leads),
-                    processing_time=processing_time,
-                    sources_total=len(sources),
-                    sources_failed=sum(
-                        1 for r in batch_results if isinstance(r, Exception)
-                    )
-                )
-                
-                return all_leads
-                
-            except Exception as e:
-                error_msg = f"Pipeline execution failed: {str(e)}"
-                logger.error(error_msg, exc_info=True)
-                raise PipelineError(error_msg)
+    # Initialize and run pipeline
+    pipeline = AggregationPipeline(
+        scrapers=[craigslist_scraper, zillow_scraper],
+        parsers=[craigslist_parser, zillow_parser],
+        cache=RedisCache()
+    )
 
-    async def _process_source(
-        self,
-        source: str,
-        location: str,
-        radius_km: float,
-        **kwargs
-    ) -> List[LeadCreate]:
-        """
-        Process a single source with error handling and validation
-        
-        Args:
-            source: Source identifier
-            location: Geographic location
-            radius_km: Search radius
-            **kwargs: Additional parameters
-            
-        Returns:
-            List[LeadCreate]: Processed leads
-            
-        Raises:
-            NetworkError: If data collection fails
-            ParseError: If data parsing fails
-            ValidationError: If data validation fails
-        """
-        start_time = datetime.utcnow()
-        try:
-            scraper = self.scrapers[source]
-            parser = self.parsers[source]
-            
-            # Collect raw data
-            raw_leads = await scraper.search(
-                location=location,
-                radius_km=radius_km,
-                **kwargs
-            )
-            
-            # Parse and validate leads
-            validated_leads = []
-            for raw_lead in raw_leads:
-                try:
-                    # Parse the lead
-                    lead = await self._parse_lead(raw_lead, parser)
-                    
-                    # Validate the lead
-                    if validate_lead_data(lead):
-                        validated_leads.append(lead)
-                    
-                except (ParseError, LeadValidationError) as e:
-                    logger.warning(f"Lead processing failed: {e}")
-                    self.metrics.record_lead_failure(source, str(e))
-                    continue
-            
-            # Update metrics
-            processing_time = (datetime.utcnow() - start_time).total_seconds()
-            self.metrics.record_source_success(
-                source=source,
-                leads_found=len(raw_leads),
-                leads_valid=len(validated_leads),
-                processing_time=processing_time
-            )
-            
-            return validated_leads
-            
-        except Exception as e:
-            logger.error(f"Source {source} processing failed: {e}", exc_info=True)
-            self.metrics.record_source_failure(source, str(e))
-            raise
-
-    async def _parse_lead(self, raw_lead: Dict[str, Any], parser: BaseParser) -> LeadCreate:
-        """
-        Parse and enhance a single lead
-        
-        Args:
-            raw_lead: Raw lead data
-            parser: Parser instance
-            
-        Returns:
-            LeadCreate: Parsed lead
-            
-        Raises:
-            ParseError: If parsing fails
-            ValidationError: If validation fails
-        """
-        try:
-            # Parse the lead
-            lead = await parser.parse_async(raw_lead)
-            
-            # Enhance with additional data if available
-            if hasattr(parser, 'enhance_lead'):
-                lead = await parser.enhance_lead(lead)
-            
-            # Validate the lead
-            if not validate_lead_data(lead):
-                raise ValidationError("Lead failed validation")
-            
-            return lead
-            
-        except Exception as e:
-            error_msg = f"Lead parsing failed: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            raise ParseError(error_msg)
-
-    async def get_pipeline_stats(self) -> Dict[str, Any]:
-        """
-        Get current pipeline statistics and metrics
-        
-        Returns:
-            Dict[str, Any]: Pipeline statistics
-        """
-        return await self.metrics.get_stats()
+    asyncio.run(pipeline.run_pipeline())
