@@ -1,6 +1,29 @@
-# Add to imports
-from src.aggregator.components.pricing_engine import PricingEngine
+"""
+Aggregation Pipeline for AIQLeads.
+
+This module implements a high-performance pipeline that coordinates 
+scrapers, parsers, pricing, and recommendations for lead data.
+"""
+
+import asyncio
+from typing import Dict, List, Optional, Any
+from datetime import datetime
+from contextlib import asynccontextmanager
+
+from src.schemas.lead_schema import LeadCreate, LeadValidationError
+from src.aggregator.base_scraper import BaseScraper
+from src.aggregator.base_parser import BaseParser
+from src.aggregator.components.pricing_engine import PricingEngine 
 from src.aggregator.components.recommendation_engine import RecommendationEngine
+from src.aggregator.exceptions import (
+    PipelineError, 
+    NetworkError, 
+    ParseError,
+    ValidationError
+)
+from src.aggregator.components.metrics import PerformanceMetricsAggregator
+from src.utils.validators import validate_lead_data
+from src.config import Settings
 
 class AggregationPipeline:
     def __init__(self, settings: Settings):
@@ -56,11 +79,3 @@ class AggregationPipeline:
             logger.error(f"Source {source} processing failed: {e}", exc_info=True)
             self.metrics.record_source_failure(source, str(e))
             raise
-
-    async def get_recommendations(self, user_id: str, leads: List[Dict[str, Any]], limit: int = 10) -> List[Dict[str, Any]]:
-        """Get personalized lead recommendations."""
-        return await self.recommendation_engine.get_recommendations(
-            user_id=user_id,
-            available_leads=leads,
-            limit=limit
-        )
