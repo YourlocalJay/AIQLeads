@@ -9,6 +9,7 @@ The AI Recommendations system is designed to provide intelligent lead scoring an
 - [Schema Definitions](../../schemas/README.md#recommendation-schema)
 - [Implementation Guide](../../implementation/monitoring/schema_validation.md)
 - [Monitoring Setup](../../implementation/monitoring/README.md)
+- [Model Training Guide](./ai_model_training.md)
 
 ## System Components
 
@@ -19,16 +20,16 @@ The AI Recommendations system is designed to provide intelligent lead scoring an
 - Error handling and retry logic
 
 ### 2. Feature Engineering
-- User behavior analysis
+- User behavior analysis ([Model Training Details](./ai_model_training.md#feature-engineering))
 - Lead quality metrics
 - Market trend indicators
 - Conversion likelihood factors
 
 ### 3. ML Model Service
-- Model training pipeline
+- Model training pipeline ([Training Guide](./ai_model_training.md#training-pipeline))
 - Real-time inference engine
-- Model versioning
-- Performance monitoring
+- Model versioning ([Version Control](./ai_model_training.md#version-control))
+- Performance monitoring ([Monitoring Guide](./ai_model_training.md#performance-monitoring))
 
 ### 4. Recommendation Engine
 - Score generation
@@ -51,7 +52,7 @@ The AI Recommendations system is designed to provide intelligent lead scoring an
 
 2. Processing Pipeline
    - Data validation
-   - Feature extraction
+   - Feature extraction ([Feature Engineering Guide](./ai_model_training.md#feature-engineering))
    - Score calculation
    - Recommendation generation
 
