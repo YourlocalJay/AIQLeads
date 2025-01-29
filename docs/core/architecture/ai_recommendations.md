@@ -5,12 +5,18 @@ This document describes the architecture of the AI Recommendations system in AIQ
 ## Overview
 The AI Recommendations system is designed to provide intelligent lead scoring and recommendations based on historical data and real-time signals.
 
+## Related Documentation
+- [Feature Documentation](../../features/ai-recommendations/README.md)
+- [API Reference](../../api/reference/ai_recommendations.md)
+- [Schema Definitions](../../schemas/README.md#recommendation-schema)
+- [Implementation Guide](../../implementation/monitoring/schema_validation.md)
+
 ## System Components
 
 ### 1. Data Ingestion Pipeline
 - Real-time event processing
 - Historical data import
-- Data validation and cleaning
+- Data validation and cleaning ([Schema Validation](../../implementation/monitoring/schema_validation.md))
 - Error handling and retry logic
 
 ### 2. Feature Engineering
@@ -32,15 +38,15 @@ The AI Recommendations system is designed to provide intelligent lead scoring an
 - Business logic integration
 
 ### 5. API Layer
-- RESTful endpoints
+- RESTful endpoints ([API Documentation](../../api/reference/ai_recommendations.md))
 - GraphQL interface
-- Rate limiting
+- Rate limiting ([Implementation Guide](../../implementation/rate-limiting/README.md))
 - Authentication
 
 ## Data Flow
 1. Data Collection
    - User interactions
-   - Lead metadata
+   - Lead metadata ([Schema Definition](../../schemas/README.md#lead-schema))
    - Market signals
    - Historical conversions
 
@@ -148,7 +154,7 @@ The AI Recommendations system is designed to provide intelligent lead scoring an
 ## Documentation
 
 ### API Documentation
-- Endpoint specifications
+- Endpoint specifications ([API Reference](../../api/reference/ai_recommendations.md))
 - Request/response formats
 - Authentication details
 - Usage examples
