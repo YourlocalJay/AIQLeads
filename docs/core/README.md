@@ -1,19 +1,26 @@
-# AIQLeads Core Documentation
+# Core Documentation
 
-This directory contains core documentation for the AIQLeads platform.
+This section contains fundamental documentation about the AIQLeads system architecture, development practices, and deployment procedures.
 
-## Contents
+## Sections
 
 ### Architecture
-- [Overview](architecture/overview.md) - System architecture and design principles
-- [Components](architecture/components.md) - Detailed component documentation
-- [Optimization](architecture/optimization.md) - Performance optimization strategies
+Detailed system architecture documentation, including:
+- System components
+- Data flow diagrams
+- Integration points
+- Security architecture
 
 ### Development
-- [Guidelines](development/guidelines.md) - Development standards and practices
-- [Setup](development/setup.md) - Development environment setup
-- [Best Practices](development/best-practices.md) - Coding standards and best practices
+Guidelines and practices for development, including:
+- Coding standards
+- Testing requirements
+- Code review process
+- Version control workflow
 
 ### Deployment
-- [Configuration](deployment/configuration.md) - System configuration guide
-- [Maintenance](deployment/maintenance.md) - System maintenance procedures
+Deployment procedures and requirements, including:
+- Environment setup
+- Configuration management
+- Deployment checklist
+- Rollback procedures

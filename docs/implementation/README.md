@@ -1,18 +1,29 @@
-# AIQLeads Implementation Documentation
+# Implementation Documentation
 
-This directory contains detailed implementation guides and technical documentation for AIQLeads components.
+Detailed technical documentation for implementing various system components.
 
-## Contents
+## Components
 
-### Rate Limiting
-- [Adaptive System](rate-limiting/adaptive-system.md) - Smart rate limiting implementation
-- [Configuration](rate-limiting/configuration.md) - Rate limiter configuration
+### Scrapers
+- Implementation guidelines
+- Rate limiting
+- Error handling
+- Data validation
 
-### Caching
-- [Smart Cache](caching/smart-cache.md) - Advanced caching strategies
-- [Geographic Sharding](caching/geographic-sharding.md) - Location-based data sharding
+### Analytics
+- Metrics collection
+- Data processing
+- Reporting system
+- Performance monitoring
+
+### Pricing
+- Dynamic pricing engine
+- Market analysis
+- Price optimization
+- Update procedures
 
 ### Monitoring
-- [Predictive](monitoring/predictive.md) - Predictive monitoring system
-- [Metrics](monitoring/metrics.md) - Performance metrics and tracking
-- [Alerts](monitoring/alerts.md) - Alert system configuration
+- Health checks
+- Performance metrics
+- Alert system
+- Dashboard configuration
