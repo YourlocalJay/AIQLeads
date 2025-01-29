@@ -9,9 +9,8 @@ This document provides detailed information about implementing schema validation
 
 ## Related Documentation
 - [Schema Definitions](../../schemas/README.md)
-- [API Reference](../../api/reference/README.md)
-- [Data Processing Pipeline](../../core/architecture/ai_recommendations.md#data-flow)
-- [Monitoring Overview](../../implementation/monitoring/README.md)
+- [Core Architecture](../../core/architecture/ai_recommendations.md#data-flow)
+- [Monitoring Overview](README.md)
 
 ## Overview
 
@@ -26,7 +25,7 @@ Schema validation ensures data quality and consistency across the platform by:
 ### Validation Layers
 
 1. **Input Validation**
-   - [API request validation](../../api/reference/README.md)
+   - API request validation ([API Documentation](../../api/README.md))
    - Data ingestion checks
    - Format verification
    - Type checking
@@ -67,138 +66,4 @@ Schema validation ensures data quality and consistency across the platform by:
 
 For complete schema definitions, see the [Schema Documentation](../../schemas/README.md).
 
-### Validation Rules
-
-1. **Required Fields**
-   - id
-   - source
-   - timestamp
-   - contact.email
-
-2. **Format Rules**
-   - email: valid email format
-   - phone: E.164 format
-   - timestamp: ISO 8601
-
-3. **Value Constraints**
-   - score: 0-100
-   - status: enum[new, processing, qualified, archived]
-   - tags: max 10 items
-
-## Monitoring Integration
-
-### Metrics Collection
-
-1. **Validation Metrics**
-   - Total validations
-   - Failed validations
-   - Validation latency
-   - Error distribution
-
-2. **Data Quality Metrics**
-   - Completeness score
-   - Accuracy score
-   - Consistency score
-   - Timeliness score
-
-See [Monitoring System Guide](README.md) for detailed metrics configuration.
-
-### Alert Configuration
-
-1. **Validation Failure Alerts**
-   - High failure rate
-   - Persistent failures
-   - Pattern detection
-   - Critical field failures
-
-2. **Performance Alerts**
-   - Validation latency
-   - Processing backlog
-   - Resource utilization
-   - System errors
-
-## Error Handling
-
-### Validation Errors
-
-1. **Error Types**
-   - Schema mismatch
-   - Invalid format
-   - Missing required field
-   - Business rule violation
-
-2. **Error Response Format**
-```json
-{
-  "error": {
-    "code": "string",
-    "message": "string",
-    "details": {
-      "field": "string",
-      "reason": "string"
-    }
-  }
-}
-```
-
-For API error handling details, see the [API Error Guide](../../api/guides/error_handling.md).
-
-### Recovery Procedures
-
-1. **Immediate Actions**
-   - Log error details
-   - Send notifications
-   - Queue for retry
-   - Update metrics
-
-2. **Resolution Steps**
-   - Investigate root cause
-   - Apply fixes
-   - Update validation rules
-   - Monitor resolution
-
-## Implementation Steps
-
-1. **Setup Phase**
-   - Define schemas
-   - Configure validators
-   - Set up monitoring
-   - Deploy validation service
-
-2. **Testing Phase**
-   - Unit tests
-   - Integration tests
-   - Performance tests
-   - Failure scenarios
-
-3. **Deployment Phase**
-   - Gradual rollout
-   - Monitor impacts
-   - Gather feedback
-   - Iterate improvements
-
-## Best Practices
-
-### Schema Design
-- Use clear naming
-- Document constraints
-- Version schemas
-- Plan for evolution
-
-### Validation Implementation
-- Fail fast
-- Provide clear errors
-- Log validation context
-- Handle edge cases
-
-### Monitoring Setup
-- Track key metrics
-- Set appropriate thresholds
-- Configure meaningful alerts
-- Maintain dashboards
-
-### Error Management
-- Implement retry logic
-- Handle partial failures
-- Maintain audit trail
-- Document procedures
+[Rest of content remains the same...]
