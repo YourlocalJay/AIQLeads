@@ -1,79 +1,82 @@
-# AIQLeads Documentation
+# AIQLeads
 
-## Overview
-AIQLeads is an AI-powered real estate lead marketplace designed for high automation, scalability, and data-driven insights. This documentation provides comprehensive guidance for development, deployment, and usage of the platform.
+AIQLeads is an intelligent lead generation and management system that combines AI-driven recommendations with robust data processing pipelines.
 
-## Documentation Structure
+## Project Status
 
-### [Core Documentation](docs/core)
-- **[Architecture](docs/core/architecture)** - System design and components
-- **[Development](docs/core/development)** - Setup and guidelines
-- **[Deployment](docs/core/deployment)** - Configuration and maintenance
+### Completed Components
+- Core documentation structure
+- Navigation system
+- Section-specific README files
+- Cross-reference validation
+- API documentation foundation
+- Schema definitions
+- Implementation guides for scrapers
+- Analytics system documentation
+- Pricing system documentation
+- Pipeline documentation
+- Health check system with retry mechanisms
+- Lead validation and enrichment
+- Dynamic pricing engine
+- Circuit breaker implementation
+- Enhanced error handling
 
-### [Features](docs/features)
-- **[Lead Processing](docs/features/lead-processing)** - Lead collection and enrichment
-- **[AI Recommendations](docs/features/ai-recommendations)** - AI-powered matching
-- **[Market Insights](docs/features/market-insights)** - Analytics and visualization
+### Active Development
+- AI Recommendations (70% complete)
+- Cart Management (85% complete)
+- Monitoring System (95% complete)
 
-### [Implementation](docs/implementation)
-- **[Rate Limiting](docs/implementation/rate-limiting)** - Adaptive rate control
-- **[Caching](docs/implementation/caching)** - Smart caching strategies
-- **[Monitoring](docs/implementation/monitoring)** - System monitoring
+## System Architecture
 
-### [API Documentation](docs/api)
-- **[Reference](docs/api/reference)** - API endpoints and models
-- **[Guides](docs/api/guides)** - Integration guidelines
+The project follows a modular architecture with the following key components:
 
-### [Schemas](docs/schemas)
-- Database schemas and validation rules
+1. Lead Processing Pipeline
+2. AI Recommendation Engine
+3. Dynamic Pricing System
+4. Monitoring and Health Checks
+5. Data Validation and Enrichment
 
 ## Getting Started
 
-1. **New Users**
-   - Start with [Architecture Overview](docs/core/architecture/overview.md)
-   - Review [Development Guidelines](docs/core/development/guidelines.md)
-   - Check [API Getting Started](docs/api/guides/getting-started.md)
+Please refer to our comprehensive documentation in the `docs/` directory for detailed setup and usage instructions.
 
-2. **Developers**
-   - Set up using [Development Guide](docs/core/development/guidelines.md)
-   - Review [Implementation Best Practices](docs/implementation/README.md)
-   - Explore [API Reference](docs/api/reference/endpoints.md)
+### Prerequisites
+- Python 3.9+
+- Docker
+- Redis
+- PostgreSQL
 
-3. **System Administrators**
-   - Follow [Deployment Guide](docs/core/deployment/configuration.md)
-   - Review [Monitoring Setup](docs/implementation/monitoring/predictive.md)
-   - Check [Maintenance Procedures](docs/core/deployment/maintenance.md)
+### Quick Start
+1. Clone the repository
+2. Install dependencies
+3. Configure environment variables
+4. Run setup scripts
+5. Start the services
 
-## Key Features
+## Documentation
 
-- **Advanced Lead Processing**
-  - Multi-source scraping
-  - AI-powered validation
-  - Data enrichment
+Our documentation is organized into the following sections:
 
-- **Smart Recommendations**
-  - Behavioral analysis
-  - Geographic targeting
-  - Quality scoring
+- Core Architecture (`docs/core/`)
+- Feature Specifications (`docs/features/`)
+- Implementation Details (`docs/implementation/`)
+- API Reference (`docs/api/`)
+- Data Schemas (`docs/schemas/`)
 
-- **Market Intelligence**
-  - Geospatial analytics
-  - Competitive insights
-  - Trend analysis
+## Next Milestone
 
-## Performance Metrics
+Target: March 15, 2025
+Key Deliverables:
+- Complete AI recommendations
+- Enhanced cart management
+- Expanded monitoring
+- Performance optimization
+- System reliability improvements
 
-- API Response Time: < 150ms (p95)
-- Lead Processing: 150+ leads/second
-- Cache Hit Rate: > 85%
-- System Uptime: 99.9%
+## Contributing
 
-## Support and Resources
-
-- [GitHub Issues](https://github.com/YourlocalJay/AIQLeads/issues)
-- [Technical Support](docs/core/development/support.md)
-- [Contribution Guidelines](docs/core/development/contributing.md)
+Please read our contribution guidelines in `CONTRIBUTING.md` before submitting any changes.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is proprietary and confidential. All rights reserved.
