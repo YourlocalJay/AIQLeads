@@ -26,14 +26,6 @@ Authorization: Bearer YOUR_API_KEY
 
 See [AI Recommendations API](./ai_recommendations.md) for detailed endpoint documentation.
 
-### Lead Management
-
-See [Lead Management API](./lead_management.md) for detailed endpoint documentation.
-
-### Market Insights
-
-See [Market Insights API](./market_insights.md) for detailed endpoint documentation.
-
 ## Error Handling
 
 See [Error Handling Guide](../guides/error_handling.md) for detailed information about error responses and handling.
