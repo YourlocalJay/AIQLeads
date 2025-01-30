@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader } from 'lucide-react';
+import { WebSocketClient } from '@/utils/websocket'; // Hypothetical WebSocket client for live updates
 
 type VisualizationType = 'heatmap' | 'clusters' | 'choropleth' | 'competitors';
 
@@ -37,6 +38,7 @@ interface GeospatialMapProps {
   onDataLoad?: (data: GeoJSONResponse) => void;
   onError?: (error: Error) => void;
   className?: string;
+  enableWebSocket?: boolean;
 }
 
 export const GeospatialMap: React.FC<GeospatialMapProps> = ({
@@ -44,38 +46,53 @@ export const GeospatialMap: React.FC<GeospatialMapProps> = ({
   initialType = 'heatmap',
   onDataLoad,
   onError,
-  className = ''
+  className = '',
+  enableWebSocket = true
 }) => {
   const [visualizationType, setVisualizationType] = useState<VisualizationType>(initialType);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<GeoJSONResponse | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const response = await fetch(`/api/geospatial/${visualizationType}?region=${region}`);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch ${visualizationType} data`);
-        }
-        
-        const jsonData: GeoJSONResponse = await response.json();
-        setData(jsonData);
-        onDataLoad?.(jsonData);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load data';
-        setError(errorMessage);
-        onError?.(err as Error);
-      } finally {
-        setLoading(false);
+  // Function to fetch data
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`/api/geospatial/${visualizationType}?region=${region}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${visualizationType} data`);
       }
-    };
-
-    fetchData();
+      
+      const jsonData: GeoJSONResponse = await response.json();
+      setData(jsonData);
+      onDataLoad?.(jsonData);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load data';
+      setError(errorMessage);
+      onError?.(err as Error);
+    } finally {
+      setLoading(false);
+    }
   }, [region, visualizationType, onDataLoad, onError]);
+
+  // Fetch data on visualization type change
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // WebSocket client for real-time updates
+  useEffect(() => {
+    if (!enableWebSocket) return;
+
+    const ws = new WebSocketClient(`wss://realtime.aiqleads.com/${visualizationType}`, (newData: GeoJSONResponse) => {
+      setData(newData);
+      onDataLoad?.(newData);
+    });
+
+    return () => ws.disconnect();
+  }, [visualizationType, onDataLoad, enableWebSocket]);
 
   return (
     <Card className={`w-full ${className}`}>
@@ -115,7 +132,7 @@ export const GeospatialMap: React.FC<GeospatialMapProps> = ({
             </div>
           ) : data ? (
             <div className="h-full">
-              {/* Map implementation will be added here */}
+              {/* Placeholder for future map integration */}
               <pre className="overflow-auto h-full">
                 {JSON.stringify(data, null, 2)}
               </pre>
