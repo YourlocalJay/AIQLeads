@@ -2,11 +2,10 @@ from typing import List, Dict, Any, Optional, Tuple, Set
 from datetime import datetime, timedelta
 from geoalchemy2 import Geography
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, text
+from sqlalchemy import select, func
 import json
 import numpy as np
 from prometheus_client import Histogram
-
 from src.models.lead import Lead
 from src.cache import RedisCache
 from src.monitoring import monitor
@@ -27,8 +26,8 @@ CACHE_HIT_RATE = Histogram(
 
 class GeospatialVisualizer:
     """
-    Enhanced geospatial visualization generator with optimized performance
-    and advanced features.
+    AI-powered geospatial visualization generator with optimized performance,
+    batch processing, and predictive heatmap capabilities.
     """
     
     def __init__(
@@ -83,39 +82,18 @@ class GeospatialVisualizer:
         """
         tasks = []
         if 'density' in layers:
-            tasks.append(self.generate_density_heatmap(
-                region=region,
-                grid_size=1000,
-                property_type=filters.get('property_type'),
-                min_price=filters.get('min_price'),
-                max_price=filters.get('max_price'),
-                start_date=filters.get('start_date'),
-                end_date=filters.get('end_date'),
-                zoom_level=zoom_level
-            ))
-            
+            tasks.append(self.generate_density_heatmap(region, filters, zoom_level))
         if 'clusters' in layers:
-            tasks.append(self.generate_cluster_visualization(
-                region=region,
-                eps=filters.get('cluster_radius', 5000),
-                min_points=filters.get('min_cluster_size', 5)
-            ))
-            
+            tasks.append(self.generate_cluster_visualization(region, filters))
         if 'competitors' in layers:
-            tasks.append(self.generate_competitor_proximity_analysis(
-                region=region,
-                radius=filters.get('competitor_radius', 5000)
-            ))
+            tasks.append(self.generate_competitor_proximity_analysis(region, filters))
 
         # Execute all visualization tasks concurrently
         results = await asyncio.gather(*tasks)
         
-        # Combine the results into a multi-layer visualization
         return {
             'type': 'FeatureCollection',
-            'layers': {
-                layer: result for layer, result in zip(layers, results)
-            },
+            'layers': {layer: result for layer, result in zip(layers, results)},
             'metadata': {
                 'region': region,
                 'zoom_level': zoom_level,
@@ -134,12 +112,6 @@ class GeospatialVisualizer:
     ) -> Dict[str, Any]:
         """
         Generate a predictive heatmap showing expected future density changes.
-        
-        Args:
-            region: Geographic region
-            prediction_window: Number of days to predict
-            confidence_threshold: Minimum confidence score for predictions
-            zoom_level: Map zoom level
         """
         cache_key = f"predictive_heatmap:{region}:{prediction_window}:{confidence_threshold}:{zoom_level}"
         
@@ -160,7 +132,6 @@ class GeospatialVisualizer:
         zoom_level: int
     ) -> Dict[str, Any]:
         """Compute predictive heatmap data."""
-        # Get historical density changes
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=prediction_window * 2)
         
@@ -181,14 +152,9 @@ class GeospatialVisualizer:
         for row in historical_data:
             cell = json.loads(row.cell)
             cell_key = f"{cell['coordinates'][0]}:{cell['coordinates'][1]}"
-            
             if cell_key not in cell_series:
                 cell_series[cell_key] = []
-            
-            cell_series[cell_key].append({
-                'date': row.bucket,
-                'count': row.count
-            })
+            cell_series[cell_key].append({'date': row.bucket, 'count': row.count})
         
         # Generate predictions for each cell
         predictions = []
@@ -197,7 +163,6 @@ class GeospatialVisualizer:
                 continue
                 
             # Simple linear regression for prediction
-            # In production, this would use a more sophisticated ML model
             x = np.array(range(len(series)))
             y = np.array([point['count'] for point in series])
             
@@ -212,10 +177,7 @@ class GeospatialVisualizer:
                 lon, lat = map(float, cell_key.split(':'))
                 predictions.append({
                     'type': 'Feature',
-                    'geometry': {
-                        'type': 'Point',
-                        'coordinates': [lon, lat]
-                    },
+                    'geometry': {'type': 'Point', 'coordinates': [lon, lat]},
                     'properties': {
                         'predicted_change': float(predicted_change),
                         'confidence': float(r_squared),
@@ -246,8 +208,6 @@ class GeospatialVisualizer:
         lat_rad = np.radians(lat)
         n = 2.0 ** zoom
         tile_x = int((lon + 180.0) / 360.0 * n)
-        tile_y = int(
-            (1.0 - np.log(np.tan(lat_rad) + (1 / np.cos(lat_rad))) / np.pi) / 2.0 * n
-        )
+        tile_y = int((1.0 - np.log(np.tan(lat_rad) + (1 / np.cos(lat_rad))) / np.pi) / 2.0 * n)
         
         return tile_x, tile_y
