@@ -1,203 +1,100 @@
-import asyncio
+import os
 import logging
 import functools
-from typing import TypeVar, Callable, Any, Optional, Type, Union, Tuple
-from datetime import datetime
+import random
+import asyncio
+from typing import Any, Callable, Optional, Union, Type, Tuple
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
-
 class RetryError(Exception):
     """Custom exception for retry failures"""
+    pass
+
+class RetryDecorator:
+    """Enhanced retry logic with dynamic configuration and metrics."""
+    
     def __init__(
         self,
-        message: str,
-        last_error: Optional[Exception] = None,
-        attempts: int = 0
+        max_attempts: Optional[int] = None,
+        initial_delay: Optional[float] = None,
+        max_delay: Optional[float] = None,
+        backoff_factor: Optional[float] = None,
+        exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
+        on_retry: Optional[Callable[[Exception, int], None]] = None
     ):
-        super().__init__(message)
-        self.last_error = last_error
-        self.attempts = attempts
-
-async def with_retry(
-    func: Callable[..., Any],
-    max_attempts: int = 3,
-    initial_delay: float = 0.1,
-    max_delay: float = 2.0,
-    backoff_factor: float = 2.0,
-    exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
-    on_retry: Optional[Callable[[Exception, int], None]] = None
-) -> Any:
-    """
-    Retry an async function with exponential backoff.
-    
-    Args:
-        func: Async function to retry
-        max_attempts: Maximum number of retry attempts
-        initial_delay: Initial delay between retries in seconds
-        max_delay: Maximum delay between retries in seconds
-        backoff_factor: Multiplier for the delay after each retry
-        exceptions: Exception or tuple of exceptions to catch and retry
-        on_retry: Optional callback function called after each retry attempt
+        """
+        Initialize retry configuration.
         
-    Returns:
-        Result from the function if successful
+        :param max_attempts: Maximum number of retry attempts
+        :param initial_delay: Initial delay between retries
+        :param max_delay: Maximum delay between retries
+        :param backoff_factor: Multiplier for increasing delay between retries
+        :param exceptions: Exception or tuple of exceptions to retry on
+        :param on_retry: Optional callback function to execute on each retry
+        """
+        self.max_attempts = max_attempts or int(os.getenv("RETRY_MAX_ATTEMPTS", 3))
+        self.initial_delay = initial_delay or float(os.getenv("RETRY_INITIAL_DELAY", 0.1))
+        self.max_delay = max_delay or float(os.getenv("RETRY_MAX_DELAY", 2.0))
+        self.backoff_factor = backoff_factor or float(os.getenv("RETRY_BACKOFF_FACTOR", 2.0))
+        self.exceptions = exceptions
+        self.on_retry = on_retry
+
+    async def with_retry(self, func: Callable[..., Any]) -> Any:
+        """
+        Execute function with retry logic.
         
-    Raises:
-        RetryError: If max attempts are exceeded
-    """
-    attempt = 1
-    delay = initial_delay
-    last_error = None
-
-    while attempt <= max_attempts:
-        try:
-            return await func()
-        except exceptions as e:
-            last_error = e
-            
-            if attempt == max_attempts:
-                logger.error(
-                    f"Max retry attempts ({max_attempts}) exceeded for {func.__name__}. "
-                    f"Last error: {str(e)}"
-                )
-                raise RetryError(
-                    f"Failed after {attempt} attempts",
-                    last_error=e,
-                    attempts=attempt
-                )
-            
-            if on_retry:
-                on_retry(e, attempt)
-            
-            logger.warning(
-                f"Retry attempt {attempt}/{max_attempts} for {func.__name__} "
-                f"failed: {str(e)}. Retrying in {delay:.2f}s"
-            )
-            
-            await asyncio.sleep(delay)
-            delay = min(delay * backoff_factor, max_delay)
-            attempt += 1
-
-def with_retry_decorator(
-    max_attempts: int = 3,
-    initial_delay: float = 0.1,
-    max_delay: float = 2.0,
-    backoff_factor: float = 2.0,
-    exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
-    on_retry: Optional[Callable[[Exception, int], None]] = None
-) -> Callable:
-    """
-    Decorator for adding retry logic to async functions.
-    
-    Args:
-        Same as with_retry function
+        :param func: Async function to execute with retry mechanism
+        :return: Result of the function
+        :raises RetryError: If max retry attempts are exceeded
+        """
+        attempt = 1
+        delay = self.initial_delay
         
-    Returns:
-        Decorated function with retry logic
-    """
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        @functools.wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            async def retry_func() -> Any:
-                return await func(*args, **kwargs)
-            
-            return await with_retry(
-                retry_func,
-                max_attempts=max_attempts,
-                initial_delay=initial_delay,
-                max_delay=max_delay,
-                backoff_factor=backoff_factor,
-                exceptions=exceptions,
-                on_retry=on_retry
-            )
-        return wrapper
-    return decorator
-
-class CircuitBreaker:
-    """
-    Circuit breaker implementation to prevent repeated calls to failing services.
-    """
-    def __init__(
-        self,
-        failure_threshold: int = 5,
-        reset_timeout: float = 60.0,
-        half_open_timeout: float = 30.0
-    ):
-        self.failure_threshold = failure_threshold
-        self.reset_timeout = reset_timeout
-        self.half_open_timeout = half_open_timeout
-        
-        self.failures = 0
-        self.last_failure_time: Optional[datetime] = None
-        self.state = "closed"  # closed, open, or half-open
-
-    def record_failure(self) -> None:
-        """Record a failure and potentially open the circuit"""
-        self.failures += 1
-        self.last_failure_time = datetime.now()
-        
-        if self.failures >= self.failure_threshold:
-            self.state = "open"
-            logger.warning(f"Circuit breaker opened after {self.failures} failures")
-
-    def record_success(self) -> None:
-        """Record a success and reset the circuit breaker"""
-        self.failures = 0
-        self.last_failure_time = None
-        self.state = "closed"
-        logger.info("Circuit breaker reset after successful operation")
-
-    def can_execute(self) -> bool:
-        """Check if the operation can be executed"""
-        if self.state == "closed":
-            return True
-            
-        if self.state == "open" and self.last_failure_time:
-            elapsed = (datetime.now() - self.last_failure_time).total_seconds()
-            if elapsed >= self.reset_timeout:
-                self.state = "half-open"
-                logger.info("Circuit breaker entering half-open state")
-                return True
-            return False
-            
-        if self.state == "half-open":
-            elapsed = (datetime.now() - self.last_failure_time).total_seconds() \
-                if self.last_failure_time else 0
-            return elapsed >= self.half_open_timeout
-            
-        return False
-
-def with_circuit_breaker(
-    circuit_breaker: CircuitBreaker,
-    fallback: Optional[Callable[..., Any]] = None
-) -> Callable:
-    """
-    Decorator for adding circuit breaker logic to async functions.
-    
-    Args:
-        circuit_breaker: CircuitBreaker instance to use
-        fallback: Optional fallback function to call when circuit is open
-        
-    Returns:
-        Decorated function with circuit breaker logic
-    """
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        @functools.wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            if not circuit_breaker.can_execute():
-                if fallback:
-                    return await fallback(*args, **kwargs)
-                raise Exception("Circuit breaker is open")
-            
+        while True:
             try:
-                result = await func(*args, **kwargs)
-                circuit_breaker.record_success()
-                return result
-            except Exception as e:
-                circuit_breaker.record_failure()
-                raise
+                return await func()
+            except self.exceptions as e:
+                if attempt >= self.max_attempts:
+                    logger.error(f"Max retry attempts ({self.max_attempts}) exceeded")
+                    raise RetryError(f"Max retries exceeded after {attempt} attempts") from e
                 
+                if self.on_retry:
+                    await self.on_retry(e, attempt)
+                    
+                logger.warning(
+                    f"Retry attempt {attempt}/{self.max_attempts} after error: {str(e)}",
+                    exc_info=True
+                )
+                
+                await self._sleep_with_backoff(delay, attempt)
+                delay = min(delay * self.backoff_factor, self.max_delay)
+                attempt += 1
+
+    async def _sleep_with_backoff(self, delay: float, attempt: int) -> None:
+        """
+        Non-blocking sleep with exponential backoff and jitter.
+        
+        :param delay: Base delay time
+        :param attempt: Current retry attempt number
+        """
+        jitter = delay * 0.1
+        sleep_time = min(delay + (random.uniform(-jitter, jitter)), self.max_delay)
+        logger.debug(f"Retry attempt {attempt} sleeping {sleep_time:.2f}s")
+        await asyncio.sleep(sleep_time)
+
+def with_retry_decorator(**kwargs) -> Callable:
+    """
+    Decorator factory for retry logic.
+    
+    :param kwargs: Configuration parameters for RetryDecorator
+    :return: Retry decorator
+    """
+    retry = RetryDecorator(**kwargs)
+
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs) -> Any:
+            return await retry.with_retry(lambda: func(*args, **kwargs))
         return wrapper
     return decorator
