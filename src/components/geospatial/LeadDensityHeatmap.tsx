@@ -1,7 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ZoomPanSvg } from '@/components/ui/zoom-pan-svg'; // Hypothetical component for zoom/pan support
+import { WebSocketClient } from '@/utils/websocket'; // Hypothetical WebSocket client for real-time updates
 
 interface HeatmapFeature {
   type: 'Feature';
@@ -11,6 +14,7 @@ interface HeatmapFeature {
   };
   properties: {
     count: number;
+    forecasted_count?: number;
   };
 }
 
@@ -36,10 +40,22 @@ export const LeadDensityHeatmap: React.FC<LeadDensityHeatmapProps> = ({
   onGridSizeChange,
   className = ''
 }) => {
-  // Calculate bounds
+  const [hoveredPoint, setHoveredPoint] = useState<HeatmapFeature | null>(null);
+  const [forecastWindow, setForecastWindow] = useState<number>(30); // Forecast window in days
+
+  // WebSocket client for real-time updates
+  useEffect(() => {
+    const ws = new WebSocketClient('wss://realtime.aiqleads.com/density-updates', (newData: HeatmapData) => {
+      data.features = newData.features;
+    });
+
+    return () => ws.disconnect();
+  }, []);
+
+  // Calculate bounds for scaling
   const bounds = useMemo(() => {
     if (!data.features.length) return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
-    
+
     return data.features.reduce((acc, feature) => {
       const [x, y] = feature.geometry.coordinates;
       return {
@@ -77,89 +93,92 @@ export const LeadDensityHeatmap: React.FC<LeadDensityHeatmapProps> = ({
       return {
         x: padding + (x - minX) * scale,
         y: height - (padding + (y - minY) * scale),
-        count: feature.properties.count
+        count: feature.properties.count,
+        forecastedCount: feature.properties.forecasted_count || feature.properties.count,
+        feature
       };
     });
   }, [data, bounds, scale, height]);
 
-  // Calculate color intensity
+  // Determine color intensity for heatmap
   const maxCount = useMemo(() => {
-    return Math.max(...points.map(p => p.count));
+    return Math.max(...points.map(p => p.count), 1);
   }, [points]);
 
   const getColor = (count: number) => {
     const intensity = count / maxCount;
-    return `rgba(59, 130, 246, ${intensity})`; // Using blue with varying opacity
+    return `rgba(255, 69, 0, ${intensity})`; // Red heatmap with varying opacity
   };
 
   return (
     <Card className={`p-4 ${className}`}>
-      <div className="mb-4">
-        <Label>Grid Size (meters)</Label>
-        <Slider
-          value={[gridSize]}
-          onValueChange={([value]) => onGridSizeChange?.(value)}
-          min={100}
-          max={5000}
-          step={100}
-          className="w-full"
-        />
-        <div className="text-sm text-muted-foreground mt-1">
-          {gridSize}m × {gridSize}m
+      <div className="mb-4 flex justify-between">
+        <div>
+          <Label>Grid Size (meters)</Label>
+          <Slider
+            value={[gridSize]}
+            onValueChange={([value]) => onGridSizeChange?.(value)}
+            min={100}
+            max={5000}
+            step={100}
+            className="w-40"
+          />
+          <div className="text-sm text-muted-foreground mt-1">
+            {gridSize}m × {gridSize}m
+          </div>
+        </div>
+
+        <div>
+          <Label>Forecast Window (days)</Label>
+          <Slider
+            value={[forecastWindow]}
+            onValueChange={([value]) => setForecastWindow(value)}
+            min={7}
+            max={90}
+            step={7}
+            className="w-40"
+          />
+          <div className="text-sm text-muted-foreground mt-1">
+            {forecastWindow} days
+          </div>
         </div>
       </div>
-      
-      <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        className="bg-background"
-      >
-        {/* Draw heatmap points */}
+
+      <ZoomPanSvg width={width} height={height}>
+        {/* Heatmap Circles */}
         {points.map((point, i) => (
-          <circle
-            key={i}
-            cx={point.x}
-            cy={point.y}
-            r={gridSize * scale / 2000}
-            fill={getColor(point.count)}
-            opacity={0.6}
-          >
-            <title>Count: {point.count}</title>
-          </circle>
+          <Tooltip key={i}>
+            <TooltipTrigger asChild>
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r={gridSize * scale / 2000}
+                fill={getColor(point.forecastedCount)}
+                opacity={0.7}
+                onMouseEnter={() => setHoveredPoint(point.feature)}
+                onMouseLeave={() => setHoveredPoint(null)}
+              />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p><strong>Leads:</strong> {point.count}</p>
+              <p><strong>Forecast:</strong> {point.forecastedCount}</p>
+            </TooltipContent>
+          </Tooltip>
         ))}
-        
-        {/* Draw grid (optional) */}
-        {points.map((point, i) => (
-          <rect
-            key={`grid-${i}`}
-            x={point.x - gridSize * scale / 2000}
-            y={point.y - gridSize * scale / 2000}
-            width={gridSize * scale / 1000}
-            height={gridSize * scale / 1000}
-            fill="none"
-            stroke="rgba(156, 163, 175, 0.1)"
-            strokeWidth={1}
-          />
-        ))}
-        
+
         {/* Legend */}
-        <g transform={`translate(${width - 100}, ${height - 120})`}>
-          <rect x={0} y={0} width={80} height={100} fill="white" opacity={0.9} rx={4} />
+        <g transform={`translate(${width - 120}, ${height - 120})`}>
+          <rect width={100} height={100} fill="white" opacity={0.9} rx={4} />
           {[0.2, 0.4, 0.6, 0.8, 1].map((intensity, i) => (
             <g key={i} transform={`translate(10, ${10 + i * 20})`}>
-              <rect
-                width={15}
-                height={15}
-                fill={`rgba(59, 130, 246, ${intensity})`}
-              />
+              <rect width={15} height={15} fill={`rgba(255, 69, 0, ${intensity})`} />
               <text x={25} y={12} fontSize={12} fill="currentColor">
                 {Math.round(maxCount * intensity)}
               </text>
             </g>
           ))}
         </g>
-      </svg>
+      </ZoomPanSvg>
     </Card>
   );
 };
