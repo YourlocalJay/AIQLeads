@@ -1,101 +1,150 @@
-from fastapi import WebSocket, WebSocketDisconnect
-from typing import Dict, Set, List, Any
+from fastapi import WebSocket, WebSocketDisconnect, status
+from typing import Dict, Set, List, Any, Optional
 import json
 import asyncio
-from datetime import datetime
-from pydantic import BaseModel
+import weakref
+from datetime import datetime, timedelta
+from pydantic import BaseModel, ValidationError
+import logging
+from collections import defaultdict
+from app.services.security import validate_websocket_token  # Auth service
+from app.services.metrics import ws_metrics  # Monitoring service
+from app.services.ai_recommendations import get_smart_lead_suggestions  # AI-powered lead filtering
+
+logger = logging.getLogger("websocket")
+
+class SubscriptionFilter(BaseModel):
+    lead_types: Optional[List[str]] = None
+    min_score: Optional[float] = None
+    regions: Optional[List[str]] = None
+    max_price: Optional[float] = None
+    min_update_frequency: int = 5  # Seconds between updates
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, Set[WebSocket]] = {}
-        self._lock = asyncio.Lock()
+        self.active_connections: Dict[str, weakref.WeakSet[WebSocket]] = defaultdict(weakref.WeakSet)
+        self.subscriptions: Dict[WebSocket, SubscriptionFilter] = {}
+        self.rate_limits: Dict[WebSocket, datetime] = {}
+        self.HEARTBEAT_INTERVAL = 30
+        self.HEARTBEAT_TIMEOUT = 45
+
+    async def authenticate(self, websocket: WebSocket, token: str) -> str:
+        """Authenticate connection and return client ID"""
+        try:
+            client_id = await validate_websocket_token(token)
+            await websocket.send_json({"type": "auth_success", "client_id": client_id})
+            return client_id
+        except Exception as e:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=str(e))
+            raise
 
     async def connect(self, websocket: WebSocket, client_id: str):
+        """Register connection with default subscriptions"""
         await websocket.accept()
-        async with self._lock:
-            if client_id not in self.active_connections:
-                self.active_connections[client_id] = set()
-            self.active_connections[client_id].add(websocket)
+        self.active_connections[client_id].add(websocket)
+        self.subscriptions[websocket] = SubscriptionFilter()
+        ws_metrics.connection_opened(client_id)
 
     async def disconnect(self, websocket: WebSocket, client_id: str):
-        async with self._lock:
-            if client_id in self.active_connections:
-                self.active_connections[client_id].remove(websocket)
-                if not self.active_connections[client_id]:
-                    del self.active_connections[client_id]
+        """Cleanup connection resources"""
+        self.active_connections[client_id].discard(websocket)
+        if not self.active_connections[client_id]:
+            del self.active_connections[client_id]
+        self.subscriptions.pop(websocket, None)
+        self.rate_limits.pop(websocket, None)
+        ws_metrics.connection_closed(client_id)
 
-    async def broadcast_to_client(self, client_id: str, message: dict):
-        if client_id in self.active_connections:
-            disconnected = set()
-            for connection in self.active_connections[client_id]:
-                try:
-                    await connection.send_json(message)
-                except WebSocketDisconnect:
-                    disconnected.add(connection)
+    async def update_subscription(self, websocket: WebSocket, filters: dict):
+        """Update client's subscription filters"""
+        try:
+            sub = SubscriptionFilter(**filters)
+            self.subscriptions[websocket] = sub
+            await websocket.send_json({"type": "subscription_updated", "filters": sub.dict()})
+        except ValidationError as e:
+            await self.send_error(websocket, "invalid_filter", str(e))
             
-            # Clean up disconnected clients
-            if disconnected:
-                async with self._lock:
-                    self.active_connections[client_id] = \
-                        self.active_connections[client_id] - disconnected
-
-class LeadUpdate(BaseModel):
-    lead_id: int
-    status: str
-    update_type: str
-    timestamp: datetime
-    details: Dict[str, Any]
-
-manager = ConnectionManager()
-
-async def broadcast_lead_updates(leads: List[Any]):
-    """
-    Broadcast lead updates to connected clients.
-    This function is called from the lead management controller.
-    """
-    for lead in leads:
-        update = LeadUpdate(
-            lead_id=lead.id,
-            status="new",
-            update_type="creation",
-            timestamp=datetime.utcnow(),
-            details={
-                "score": lead.score,
-                "source": lead.lead_source,
-                "priority": lead.score * (1 if not hasattr(lead, 'conversion_probability') 
-                                       else lead.conversion_probability)
-            }
-        )
+    async def enforce_rate_limit(self, websocket: WebSocket) -> bool:
+        """Token bucket rate limiting implementation"""
+        now = datetime.now()
+        last_message = self.rate_limits.get(websocket, now - timedelta(seconds=10))
         
-        # Broadcast to all clients that should receive this lead update
-        # TODO: Implement proper client filtering based on permissions/subscriptions
-        for client_id in manager.active_connections.keys():
-            await manager.broadcast_to_client(client_id, update.dict())
+        if (now - last_message).total_seconds() < 0.5:  # 2 messages/sec
+            await self.send_error(websocket, "rate_limit", "Message rate exceeded")
+            return False
+            
+        self.rate_limits[websocket] = now
+        return True
+
+    async def broadcast_lead(self, lead: dict):
+        """Distribute lead to subscribed clients with matching filters"""
+        for websocket, subscription in self.subscriptions.items():
+            if self._matches_filters(lead, subscription):
+                try:
+                    await websocket.send_json(lead)
+                    ws_metrics.message_sent()
+                except WebSocketDisconnect:
+                    await self.handle_disconnect(websocket)
+
+    def _matches_filters(self, lead: dict, subscription: SubscriptionFilter) -> bool:
+        """Check if lead matches client's subscription filters"""
+        return (
+            (not subscription.lead_types or lead['type'] in subscription.lead_types) and
+            (subscription.min_score is None or lead['score'] >= subscription.min_score) and
+            (not subscription.regions or lead['region'] in subscription.regions) and
+            (subscription.max_price is None or lead['price'] <= subscription.max_price)
+        )
+
+    async def handle_disconnect(self, websocket: WebSocket):
+        """Cleanup disconnected websocket"""
+        for client_id, connections in self.active_connections.items():
+            if websocket in connections:
+                await self.disconnect(websocket, client_id)
+                break
 
 async def handle_client_connection(websocket: WebSocket, client_id: str):
-    """
-    Handle individual client WebSocket connections.
-    """
+    """Main WebSocket connection handler with heartbeat & AI recommendations"""
     try:
+        token = await websocket.receive_text()
+        client_id = await manager.authenticate(websocket, token)
+        
         await manager.connect(websocket, client_id)
-        
-        # Send initial connection confirmation
-        await websocket.send_json({
-            "type": "connection_established",
-            "client_id": client_id,
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        
-        # Listen for client messages
+        last_activity = datetime.now()
+
+        heartbeat_task = asyncio.create_task(send_heartbeats(websocket, manager.HEARTBEAT_INTERVAL))
+
         while True:
             try:
-                data = await websocket.receive_text()
-                # Handle client messages (e.g., subscription updates)
-                message = json.loads(data)
-                # TODO: Implement message handling logic
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=manager.HEARTBEAT_TIMEOUT)
+                last_activity = datetime.now()
                 
-            except WebSocketDisconnect:
-                break
+                if not await manager.enforce_rate_limit(websocket):
+                    continue
+
+                message = json.loads(data)
+                
+                if message['type'] == 'update_subscription':
+                    await manager.update_subscription(websocket, message['filters'])
+                    
+                elif message['type'] == 'ping':
+                    await websocket.send_json({"type": "pong"})
+
+                elif message['type'] == 'get_ai_recommendations':
+                    ai_suggestions = await get_smart_lead_suggestions(client_id)
+                    await websocket.send_json({"type": "recommendations", "data": ai_suggestions})
+
+            except asyncio.TimeoutError:
+                if (datetime.now() - last_activity).total_seconds() > manager.HEARTBEAT_TIMEOUT:
+                    raise WebSocketDisconnect()
                 
     finally:
-        await manager.disconnect(websocket, client_id)
+        heartbeat_task.cancel()
+        await manager.handle_disconnect(websocket)
+
+async def send_heartbeats(websocket: WebSocket, interval: int):
+    """Maintain connection with regular heartbeats"""
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await websocket.send_json({"type": "heartbeat", "timestamp": datetime.utcnow().isoformat()})
+        except WebSocketDisconnect:
+            break
