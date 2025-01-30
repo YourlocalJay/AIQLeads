@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
@@ -9,6 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { WebSocketClient } from '@/utils/websocket'; // Hypothetical WebSocket client
 
 interface ClusterFeature {
   type: 'Feature';
@@ -18,6 +20,7 @@ interface ClusterFeature {
   };
   properties: {
     cluster_id: number;
+    lead_count: number;
   };
 }
 
@@ -45,28 +48,27 @@ export const ClusterVisualization: React.FC<ClusterVisualizationProps> = ({
   onClusterParamsChange,
   className = ''
 }) => {
+  const [hoveredCluster, setHoveredCluster] = useState<number | null>(null);
+
+  // WebSocket connection for real-time updates
+  useEffect(() => {
+    const ws = new WebSocketClient('wss://realtime.aiqleads.com/clusters', (newData: ClusterData) => {
+      data.features = newData.features;
+    });
+
+    return () => ws.disconnect();
+  }, []);
+
   // Generate colors for clusters
   const clusterColors = useMemo(() => {
-    const colors = [
-      '#3B82F6', // blue
-      '#EF4444', // red
-      '#10B981', // green
-      '#F59E0B', // yellow
-      '#8B5CF6', // purple
-      '#EC4899', // pink
-      '#14B8A6', // teal
-      '#F97316', // orange
-      '#6366F1', // indigo
-      '#06B6D4'  // cyan
-    ];
-    
+    const colors = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#06B6D4'];
     const clusterIds = new Set(data.features.map(f => f.properties.cluster_id));
     const colorMap = new Map<number, string>();
-    
+
     Array.from(clusterIds).forEach((id, index) => {
       colorMap.set(id, colors[index % colors.length]);
     });
-    
+
     return colorMap;
   }, [data]);
 
@@ -86,15 +88,12 @@ export const ClusterVisualization: React.FC<ClusterVisualizationProps> = ({
       minY: Infinity,
       maxY: -Infinity
     });
-    
+
     const padding = 40;
     const xScale = (width - 2 * padding) / (bounds.maxX - bounds.minX);
     const yScale = (height - 2 * padding) / (bounds.maxY - bounds.minY);
-    
-    return {
-      bounds,
-      scale: Math.min(xScale, yScale)
-    };
+
+    return { bounds, scale: Math.min(xScale, yScale) };
   }, [data, width, height]);
 
   // Transform points to SVG coordinates
@@ -104,20 +103,17 @@ export const ClusterVisualization: React.FC<ClusterVisualizationProps> = ({
         x: 40 + (x - bounds.minX) * scale,
         y: height - (40 + (y - bounds.minY) * scale)
       }));
-      
-      // Calculate cluster centroid
-      const centroid = points.reduce(
-        (acc, point) => ({
-          x: acc.x + point.x / points.length,
-          y: acc.y + point.y / points.length
-        }),
-        { x: 0, y: 0 }
-      );
-      
+
+      const centroid = points.reduce((acc, point) => ({
+        x: acc.x + point.x / points.length,
+        y: acc.y + point.y / points.length
+      }), { x: 0, y: 0 });
+
       return {
         id: feature.properties.cluster_id,
         points,
         centroid,
+        leadCount: feature.properties.lead_count,
         color: clusterColors.get(feature.properties.cluster_id) || '#888888'
       };
     });
@@ -140,93 +136,41 @@ export const ClusterVisualization: React.FC<ClusterVisualizationProps> = ({
             {clusterRadius}m
           </div>
         </div>
-        
+
         <div className="w-48">
           <Label>Minimum Points</Label>
-          <Select
-            value={String(minPoints)}
-            onValueChange={(value) => onClusterParamsChange?.(clusterRadius, parseInt(value))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Min points" />
-            </SelectTrigger>
+          <Select value={String(minPoints)} onValueChange={(value) => onClusterParamsChange?.(clusterRadius, parseInt(value))}>
+            <SelectTrigger><SelectValue placeholder="Min points" /></SelectTrigger>
             <SelectContent>
               {[3, 5, 10, 15, 20].map(n => (
-                <SelectItem key={n} value={String(n)}>
-                  {n} points
-                </SelectItem>
+                <SelectItem key={n} value={String(n)}>{n} points</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
       </div>
-      
-      <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        className="bg-background"
-      >
-        {/* Draw cluster convex hulls */}
+
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="bg-background">
         {transformedClusters.map(cluster => (
-          <g key={`hull-${cluster.id}`}>
-            <path
-              d={`M ${cluster.points.map(p => `${p.x},${p.y}`).join(' L ')} Z`}
-              fill={cluster.color}
-              fillOpacity={0.1}
-              stroke={cluster.color}
-              strokeWidth={1}
-            />
-          </g>
+          <Tooltip key={`cluster-${cluster.id}`}>
+            <TooltipTrigger asChild>
+              <g>
+                <path
+                  d={`M ${cluster.points.map(p => `${p.x},${p.y}`).join(' L ')} Z`}
+                  fill={cluster.color} fillOpacity={0.1}
+                  stroke={cluster.color} strokeWidth={1}
+                  onMouseEnter={() => setHoveredCluster(cluster.id)}
+                  onMouseLeave={() => setHoveredCluster(null)}
+                />
+                <circle cx={cluster.centroid.x} cy={cluster.centroid.y} r={6} fill={cluster.color} stroke="white" strokeWidth={2} />
+              </g>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p><strong>Cluster {cluster.id}</strong></p>
+              <p>Leads: {cluster.leadCount}</p>
+            </TooltipContent>
+          </Tooltip>
         ))}
-        
-        {/* Draw points */}
-        {transformedClusters.map(cluster => (
-          <g key={`points-${cluster.id}`}>
-            {cluster.points.map((point, i) => (
-              <circle
-                key={i}
-                cx={point.x}
-                cy={point.y}
-                r={4}
-                fill={cluster.color}
-              />
-            ))}
-            
-            {/* Draw cluster centroid and label */}
-            <circle
-              cx={cluster.centroid.x}
-              cy={cluster.centroid.y}
-              r={6}
-              fill={cluster.color}
-              stroke="white"
-              strokeWidth={2}
-            />
-            <text
-              x={cluster.centroid.x}
-              y={cluster.centroid.y - 10}
-              textAnchor="middle"
-              fill="currentColor"
-              fontSize={12}
-              fontWeight="bold"
-            >
-              Cluster {cluster.id}
-            </text>
-          </g>
-        ))}
-        
-        {/* Legend */}
-        <g transform={`translate(${width - 150}, 20)`}>
-          <rect width={130} height={30 * transformedClusters.length} fill="white" opacity={0.9} rx={4} />
-          {transformedClusters.map((cluster, i) => (
-            <g key={`legend-${cluster.id}`} transform={`translate(10, ${10 + i * 25})`}>
-              <circle cx={8} cy={8} r={6} fill={cluster.color} />
-              <text x={20} y={12} fontSize={12} fill="currentColor">
-                Cluster {cluster.id} ({cluster.points.length} leads)
-              </text>
-            </g>
-          ))}
-        </g>
       </svg>
     </Card>
   );
