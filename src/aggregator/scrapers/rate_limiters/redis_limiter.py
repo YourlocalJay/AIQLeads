@@ -14,7 +14,7 @@ class RateLimiter(BaseRateLimiter):
 
     Features:
     - Safe key prefix validation
-    - AI-powered dynamic batch size adjustments
+    - AI-powered dynamic batch size adjustments 
     - Multi-attempt retries before switching to fallback
     - Multi-region Redis support for high availability
     - Prometheus-compatible telemetry for monitoring
