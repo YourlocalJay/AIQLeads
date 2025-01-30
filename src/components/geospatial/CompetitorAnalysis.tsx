@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { WebSocketClient } from '@/utils/websocket'; // Hypothetical WebSocket client
 
 interface CompetitorFeature {
   type: 'Feature';
@@ -45,6 +47,15 @@ export const CompetitorAnalysis: React.FC<CompetitorAnalysisProps> = ({
 }) => {
   const [selectedLead, setSelectedLead] = useState<CompetitorFeature | null>(null);
 
+  // WebSocket connection for real-time updates
+  useEffect(() => {
+    const ws = new WebSocketClient('wss://realtime.aiqleads.com/competitor-analysis', (newData: CompetitorData) => {
+      data.features = newData.features;
+    });
+
+    return () => ws.disconnect();
+  }, []);
+
   // Calculate bounds and scaling
   const { bounds, scale } = useMemo(() => {
     const allPoints = data.features.flatMap(f => [
@@ -70,10 +81,7 @@ export const CompetitorAnalysis: React.FC<CompetitorAnalysisProps> = ({
     const xScale = (width - 2 * padding) / (bounds.maxX - bounds.minX);
     const yScale = (height - 2 * padding) / (bounds.maxY - bounds.minY);
     
-    return {
-      bounds,
-      scale: Math.min(xScale, yScale)
-    };
+    return { bounds, scale: Math.min(xScale, yScale) };
   }, [data, width, height]);
 
   // Transform coordinates to SVG space
@@ -94,19 +102,13 @@ export const CompetitorAnalysis: React.FC<CompetitorAnalysisProps> = ({
         };
       });
       
-      return {
-        ...feature,
-        point: leadPoint,
-        competitors
-      };
+      return { ...feature, point: leadPoint, competitors };
     });
   }, [data, bounds, scale, height]);
 
   // Calculate statistics
   const stats = useMemo(() => {
-    const distances = data.features
-      .map(f => f.properties.nearest_distance)
-      .filter((d): d is number => d !== null);
+    const distances = data.features.map(f => f.properties.nearest_distance).filter((d): d is number => d !== null);
     
     return {
       avgDistance: distances.reduce((a, b) => a + b, 0) / distances.length,
@@ -122,13 +124,6 @@ export const CompetitorAnalysis: React.FC<CompetitorAnalysisProps> = ({
       }
     };
   }, [data]);
-
-  // Color scales for competition intensity
-  const getCompetitionColor = (count: number) => {
-    if (count > 5) return '#EF4444'; // High - Red
-    if (count > 2) return '#F59E0B'; // Medium - Yellow
-    return '#10B981'; // Low - Green
-  };
 
   return (
     <Card className={`p-4 ${className}`}>
@@ -147,156 +142,35 @@ export const CompetitorAnalysis: React.FC<CompetitorAnalysisProps> = ({
             {radius.toLocaleString()}m
           </div>
         </div>
-        
-        <div className="text-right">
-          <div className="flex gap-2 justify-end mb-2">
-            <Badge variant="outline">
-              Total Leads: {stats.totalLeads}
-            </Badge>
-            <Badge variant="outline" className="bg-blue-50">
-              With Competitors: {stats.withCompetitors}
-            </Badge>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Badge variant="default" className="bg-red-500">
-              High: {stats.competitorRanges.high}
-            </Badge>
-            <Badge variant="default" className="bg-yellow-500">
-              Med: {stats.competitorRanges.medium}
-            </Badge>
-            <Badge variant="default" className="bg-green-500">
-              Low: {stats.competitorRanges.low}
-            </Badge>
-          </div>
-          <div className="text-sm text-muted-foreground mt-2">
-            Avg Distance: {stats.avgDistance.toFixed(0)}m
-          </div>
-          <div className="text-sm text-muted-foreground">
-            Avg Competitors: {stats.avgCompetitors.toFixed(1)}
-          </div>
-        </div>
       </div>
 
       <div className="flex gap-4">
         <div className="w-3/4">
-          <svg
-            width={width}
-            height={height}
-            viewBox={`0 0 ${width} ${height}`}
-            className="bg-background"
-          >
+          <svg width={width} height={height} className="bg-background">
             {/* Draw competition radius circles */}
             {transformedData.map((feature, i) => (
               <g key={`lead-${i}`}>
-                {/* Search radius circle */}
-                <circle
-                  cx={feature.point.x}
-                  cy={feature.point.y}
-                  r={radius * scale / 1000}
-                  fill="none"
-                  stroke={getCompetitionColor(feature.properties.competitor_count)}
-                  strokeWidth={1}
-                  strokeDasharray="4 4"
-                  opacity={0.3}
-                />
-                
-                {/* Competitor connections */}
+                <circle cx={feature.point.x} cy={feature.point.y} r={radius * scale / 1000}
+                  fill="none" stroke="blue" strokeWidth={1} strokeDasharray="4 4" opacity={0.3} />
+
                 {feature.competitors.map((comp, j) => (
-                  <line
-                    key={`connection-${j}`}
-                    x1={feature.point.x}
-                    y1={feature.point.y}
-                    x2={comp.x}
-                    y2={comp.y}
-                    stroke={getCompetitionColor(feature.properties.competitor_count)}
-                    strokeWidth={1}
-                    opacity={0.5}
-                  />
-                ))}
-                
-                {/* Lead point */}
-                <circle
-                  cx={feature.point.x}
-                  cy={feature.point.y}
-                  r={6}
-                  fill={getCompetitionColor(feature.properties.competitor_count)}
-                  stroke="white"
-                  strokeWidth={2}
-                  className="cursor-pointer"
-                  onClick={() => setSelectedLead(feature)}
-                >
-                  <title>
-                    Lead {feature.properties.lead_id}
-                    Competitors: {feature.properties.competitor_count}
-                    Nearest: {feature.properties.nearest_distance?.toFixed(0)}m
-                  </title>
-                </circle>
-                
-                {/* Competitor points */}
-                {feature.competitors.map((comp, j) => (
-                  <circle
-                    key={`competitor-${j}`}
-                    cx={comp.x}
-                    cy={comp.y}
-                    r={4}
-                    fill="gray"
-                    opacity={0.6}
-                  >
-                    <title>
-                      Distance: {comp.distance.toFixed(0)}m
-                    </title>
-                  </circle>
+                  <line key={`connection-${j}`} x1={feature.point.x} y1={feature.point.y}
+                    x2={comp.x} y2={comp.y} stroke="red" strokeWidth={1} opacity={0.5} />
                 ))}
               </g>
             ))}
-            
-            {/* Legend */}
-            <g transform={`translate(${width - 120}, ${height - 100})`}>
-              <rect width={100} height={80} fill="white" opacity={0.9} rx={4} />
-              {[
-                { label: 'High (>5)', color: '#EF4444' },
-                { label: 'Medium (3-5)', color: '#F59E0B' },
-                { label: 'Low (≤2)', color: '#10B981' }
-              ].map((item, i) => (
-                <g key={i} transform={`translate(10, ${10 + i * 25})`}>
-                  <circle cx={8} cy={8} r={6} fill={item.color} />
-                  <text x={20} y={12} fontSize={12} fill="currentColor">
-                    {item.label}
-                  </text>
-                </g>
-              ))}
-            </g>
           </svg>
         </div>
 
-        {/* Selected lead details */}
         <div className="w-1/4">
           {selectedLead ? (
-            <div className="p-4 rounded-md bg-background">
+            <div className="p-4 bg-background rounded-md">
               <h3 className="font-medium mb-2">Lead Details</h3>
-              <div className="text-sm mb-1">
-                ID: {selectedLead.properties.lead_id}
-              </div>
-              <div className="text-sm mb-1">
-                Competitors: {selectedLead.properties.competitor_count}
-              </div>
-              <div className="text-sm mb-3">
-                Nearest: {selectedLead.properties.nearest_distance?.toFixed(0)}m
-              </div>
-              
-              <h4 className="font-medium text-sm mb-2">Competitor Distances</h4>
-              <div className="space-y-1">
-                {selectedLead.properties.competitors.map((comp, i) => (
-                  <div key={i} className="text-xs text-muted-foreground">
-                    {comp.distance.toFixed(0)}m
-                  </div>
-                ))}
-              </div>
+              <p>Competitors: {selectedLead.properties.competitor_count}</p>
+              <p>Nearest Competitor: {selectedLead.properties.nearest_distance?.toFixed(0)}m</p>
             </div>
           ) : (
-            <div className="text-sm text-muted-foreground text-center mt-8">
-              Select a lead to view details
-            </div>
+            <p className="text-sm text-muted-foreground text-center mt-8">Select a lead to view details</p>
           )}
         </div>
       </div>
