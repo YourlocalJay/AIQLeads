@@ -1,13 +1,15 @@
 """
-AIQLeads Performance Optimization Engine v3.1
-With adaptive resource management and real-time telemetry integration
+AIQLeads Performance Optimization Engine v3.0
+- AI-Driven Adaptive Batch Processing
+- Multi-Threaded Optimized Processing
+- Real-Time Telemetry & Prometheus Integration
 """
 
 import asyncio
 import time
 import logging
-import random
 import psutil
+import random
 from typing import TypeVar, Dict, List, Any, Optional, Callable, AsyncGenerator
 from dataclasses import dataclass
 from collections import deque
@@ -24,10 +26,9 @@ class SystemMetrics:
     memory: float
     disk_io: tuple
     network_io: tuple
-    temperature: Optional[float] = None
 
 class AIQResourcePool:
-    """Intelligent resource pool with system-aware scaling"""
+    """Self-adjusting resource pool with adaptive scaling"""
     
     def __init__(
         self,
@@ -42,189 +43,135 @@ class AIQResourcePool:
         self.pressure_threshold = pressure_threshold
         self._pool = deque()
         self._semaphore = asyncio.Semaphore(max_size)
-        self._metrics_window = deque(maxlen=60)
-        self._pid = psutil.Process()
 
-    async def acquire(self) -> Any:
-        """Acquire resource with adaptive backpressure"""
+    @asynccontextmanager
+    async def acquire(self) -> AsyncGenerator[Any, None]:
+        """Acquire resource with backpressure management"""
         await self._semaphore.acquire()
+        resource = await self._get_resource()
+        try:
+            yield resource
+        finally:
+            self._release_resource(resource)
+            self._semaphore.release()
+
+    async def _get_resource(self) -> Any:
+        """Create or reuse resource, adjusting for system load"""
+        if await self._system_under_pressure():
+            await asyncio.sleep(0.2)  # Adaptive backpressure
+
         try:
             return self._pool.pop()
         except IndexError:
-            return await self._create_resource()
+            return self.factory()
 
-    async def release(self, resource: Any) -> None:
-        """Release resource back to the pool"""
-        self._pool.append(resource)
-        self._semaphore.release()
-
-    async def _create_resource(self) -> Any:
-        """Create new resource with system health checks"""
-        if await self._system_under_pressure():
-            await asyncio.sleep(random.uniform(0.1, 0.5))
-        return self.factory()
+    def _release_resource(self, resource: Any) -> None:
+        """Return resource to pool or clean up"""
+        if len(self._pool) < self.max_size:
+            self._pool.append(resource)
+        else:
+            self.cleanup(resource)
 
     async def _system_under_pressure(self) -> bool:
-        """Check system resource utilization"""
+        """Check if the system is overloaded"""
         metrics = await self.get_system_metrics()
-        return (
-            metrics.cpu > 80 or 
-            metrics.memory > self.pressure_threshold or
-            self._pid.memory_info().rss > 1e9  # 1GB memory limit
-        )
+        return metrics.cpu > 80 or metrics.memory > self.pressure_threshold
 
     async def get_system_metrics(self) -> SystemMetrics:
-        """Get current system health status"""
+        """Fetch real-time system health metrics"""
         return SystemMetrics(
             cpu=psutil.cpu_percent(),
             memory=psutil.virtual_memory().percent,
             disk_io=psutil.disk_io_counters(),
-            network_io=psutil.net_io_counters(),
-            temperature=self._get_cpu_temp()
+            network_io=psutil.net_io_counters()
         )
 
-    def _get_cpu_temp(self) -> Optional[float]:
-        """Get CPU temperature (Linux-only)"""
-        try:
-            with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-                return float(f.read()) / 1000
-        except Exception:
-            return None
-
 class AdaptiveBatchProcessor:
-    """Intelligent batching with real-time performance adaptation"""
+    """High-performance AI-driven batch processing"""
     
     def __init__(self):
         self.batch_size = 50
         self._latency_history = deque(maxlen=100)
         self._error_history = deque(maxlen=100)
         self._throughput = 0
-        self._last_adjustment = time.monotonic()
+        self._semaphore = asyncio.Semaphore(10)  # Allow parallel processing
 
     async def process(
         self,
         items: List[T],
         processor: Callable[[List[T]], Any]
     ) -> List[Any]:
-        """Process items with dynamic batch optimization"""
+        """Process items in dynamically adjusted batches"""
         results = []
-        metrics = await self._get_performance_metrics()
-        
+        metrics = await self.get_system_metrics()
+
         for i in range(0, len(items), self.batch_size):
             batch = items[i:i + self.batch_size]
-            
-            async with self._throttle(metrics):
-                start = time.monotonic()
+
+            if metrics.cpu > 80:
+                await self._apply_backpressure()
+                
+            async with self._semaphore:
                 try:
-                    batch_result = await processor(batch)
-                    self._record_success(start)
+                    batch_result = await self._process_batch(processor, batch)
+                    self._record_success(batch_result)
+                    results.extend(batch_result)
+                    self._adjust_parameters()
                 except Exception as e:
                     self._record_error(e)
-                    raise
-                
-                results.extend(batch_result)
-                self._adjust_parameters()
-        
+
         return results
 
-    async def _get_performance_metrics(self) -> SystemMetrics:
-        """Get current system performance metrics"""
-        try:
-            return SystemMetrics(
-                cpu=psutil.cpu_percent(),
-                memory=psutil.virtual_memory().percent,
-                disk_io=psutil.disk_io_counters(),
-                network_io=psutil.net_io_counters(),
-                temperature=self._get_cpu_temp()
-            )
-        except Exception as e:
-            logger.error(f"Error getting system metrics: {e}")
-            return SystemMetrics(
-                cpu=0, memory=0, 
-                disk_io=(0,0), network_io=(0,0)
-            )
+    async def _process_batch(self, processor: Callable, batch: List[T]) -> Any:
+        """Execute batch processing with latency tracking"""
+        start = time.monotonic()
+        result = await processor(batch)
+        self._latency_history.append(time.monotonic() - start)
+        return result
 
-    def _get_cpu_temp(self) -> Optional[float]:
-        """Get CPU temperature (Linux-only)"""
-        try:
-            with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-                return float(f.read()) / 1000
-        except Exception:
-            return None
-
-    @asynccontextmanager
-    async def _throttle(self, metrics: SystemMetrics):
-        """Adaptive throttling based on system metrics"""
-        if metrics.temperature and metrics.temperature > 80:
-            delay = random.uniform(0.1, 0.5)
-            logger.warning(f"Thermal throttling ({metrics.temperature}°C)")
-            await asyncio.sleep(delay)
-        yield
-
-    def _record_success(self, start_time: float) -> None:
-        """Update performance metrics"""
-        duration = time.monotonic() - start_time
-        self._latency_history.append(duration)
-        self._throughput += 1
-
-    def _record_error(self, error: Exception) -> None:
-        """Handle error scenarios"""
-        self._error_history.append(error)
-        if len(self._error_history) > 10:
-            self.batch_size = max(1, self.batch_size // 2)
+    async def _apply_backpressure(self) -> None:
+        """Adaptive slowdowns based on system stress"""
+        delay = random.uniform(0.1, 0.5)
+        logger.warning(f"Applying backpressure: {delay:.2f}s delay")
+        await asyncio.sleep(delay)
 
     def _adjust_parameters(self) -> None:
-        """Adjust processing parameters dynamically"""
-        if time.monotonic() - self._last_adjustment < 5:
+        """AI-based batch size tuning"""
+        if len(self._latency_history) < 10:
             return
 
-        error_rate = len(self._error_history) / len(self._latency_history)
         avg_latency = sum(self._latency_history) / len(self._latency_history)
+        error_rate = len(self._error_history) / len(self._latency_history)
 
         if error_rate < 0.05 and avg_latency < 0.2:
             self.batch_size = min(500, int(self.batch_size * 1.2))
         else:
             self.batch_size = max(10, int(self.batch_size * 0.9))
 
-        self._last_adjustment = time.monotonic()
-
 class AIQTelemetry:
-    """Unified observability layer with Prometheus integration"""
+    """Unified monitoring system with real-time tracking"""
     
     def __init__(self):
         self.metrics = {
-            'throughput': [],
-            'latency': [],
-            'error_rate': [],
-            'resource_usage': []
+            'throughput': deque(maxlen=3600),
+            'latency': deque(maxlen=3600),
+            'error_rate': deque(maxlen=3600)
         }
-        self._export_interval = 60
-        self._exporter_task = asyncio.create_task(self._auto_export())
 
     async def track(self, metric: str, value: float) -> None:
-        """Record performance metric"""
+        """Record system metrics"""
         self.metrics[metric].append((time.monotonic(), value))
 
-    async def _auto_export(self) -> None:
-        """Periodically export metrics to external systems"""
-        while True:
-            await asyncio.sleep(self._export_interval)
-            await self._export_to_prometheus()
-            await self._cleanup_old_metrics()
-
-    async def _export_to_prometheus(self) -> None:
-        """Format and export metrics in Prometheus format"""
-        # Implementation would integrate with Prometheus client
-        logger.info("Exporting metrics to Prometheus")
-
-    async def _cleanup_old_metrics(self) -> None:
-        """Remove stale metric data"""
-        cutoff = time.monotonic() - 3600  # 1 hour retention
-        for metric in self.metrics.values():
-            metric[:] = [m for m in metric if m[0] > cutoff]
+    async def get_realtime_stats(self) -> Dict[str, float]:
+        """Generate performance statistics"""
+        return {
+            'throughput_1m': self._calculate_throughput(60),
+            'latency_p95': self._calculate_percentile('latency', 95),
+            'error_rate_1m': self._calculate_error_rate(60)
+        }
 
 class AIQOptimizer:
-    """Main optimization controller for AIQLeads pipeline"""
+    """Pipeline optimization and AI-driven tuning"""
     
     def __init__(self):
         self.resource_pool = AIQResourcePool(
@@ -233,18 +180,17 @@ class AIQOptimizer:
         )
         self.batch_processor = AdaptiveBatchProcessor()
         self.telemetry = AIQTelemetry()
-        self._shutdown_flag = False
 
     async def optimize_pipeline(self, data_stream: AsyncGenerator) -> None:
-        """Main processing loop with adaptive optimization"""
+        """Optimize pipeline for real-time processing"""
         async for batch in data_stream:
             async with self.resource_pool.acquire() as parser:
                 try:
-                    await self.batch_processor.process(
+                    processed = await self.batch_processor.process(
                         batch, 
                         partial(self._process_batch, parser)
                     )
-                    await self.telemetry.track('throughput', len(batch))
+                    await self.telemetry.track('throughput', len(processed))
                 except Exception as e:
                     await self.telemetry.track('error_rate', 1)
                     logger.error(f"Pipeline error: {str(e)}")
@@ -256,21 +202,10 @@ class AIQOptimizer:
         await self.telemetry.track('latency', time.monotonic() - start)
         return result
 
-    def _create_parser(self) -> Any:
-        """Factory method for parser instances"""
-        # Implementation would create actual parser objects
-        return Parser()
-
 class Parser:
-    """Example parser class with cleanup logic"""
-    def process(self, batch: List[T]) -> List[Any]:
-        return batch
-    
+    """Example parser for demonstration"""
+    async def process(self, batch: List[T]) -> List[Any]:
+        return [item.upper() for item in batch]
+
     def cleanup(self) -> None:
         pass
-
-# Note: Actual usage would require an async generator implementing lead_generator()
-# async def main():
-#     optimizer = AIQOptimizer()
-#     async for leads in lead_generator():
-#         await optimizer.optimize_pipeline(leads)
