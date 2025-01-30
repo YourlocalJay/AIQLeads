@@ -1,117 +1,174 @@
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Depends, status
 from pydantic import BaseModel
 from typing import List, Optional
-from sqlalchemy.orm import Session
-from src.database.postgres_manager import postgres_manager
+from sqlalchemy.ext.asyncio import AsyncSession
+import sqlalchemy as sa
+from datetime import datetime
+
+from src.database.postgres_manager import get_async_session
 from src.models.lead_model import Lead
 from src.schemas.lead_schema import LeadCreate, LeadUpdate, LeadResponse, LeadList
+from src.services.cache import redis_client
+from src.monitoring.metrics import api_metrics
+from src.auth.dependencies import validate_api_key
+from fastapi_limiter.depends import RateLimiter
+from src.ai.lead_scoring import score_lead  # AI module for lead prioritization
+from src.websocket.lead_updates import broadcast_lead_updates  # WebSocket for real-time updates
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/leads",
+    tags=["Leads"],
+    dependencies=[Depends(validate_api_key)]
+)
 
-@router.post("/leads", response_model=LeadResponse, summary="Create a new lead")
-async def create_lead(lead_data: LeadCreate):
-    """
-    Create a new lead entry.
-    Args:
-        lead_data (LeadCreate): Payload containing lead information.
-    Returns:
-        LeadResponse: Details of the created lead.
-    """
-    try:
-        with postgres_manager.get_session() as session:
-            new_lead = Lead(**lead_data.dict())
-            session.add(new_lead)
-            session.commit()
-            session.refresh(new_lead)
-            return LeadResponse.from_orm(new_lead)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating lead: {str(e)}")
+CACHE_TTL = 3600  # 1 hour cache
 
-@router.get("/leads/{lead_id}", response_model=LeadResponse, summary="Get lead details")
-async def get_lead(lead_id: int):
-    """
-    Fetch details of a specific lead by ID.
-    Args:
-        lead_id (int): ID of the lead to fetch.
-    Returns:
-        LeadResponse: Details of the lead.
-    """
-    try:
-        with postgres_manager.get_session() as session:
-            lead = session.query(Lead).filter(Lead.id == lead_id).first()
-            if not lead:
-                raise HTTPException(status_code=404, detail="Lead not found")
-            return LeadResponse.from_orm(lead)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching lead: {str(e)}")
-
-@router.put("/leads/{lead_id}", response_model=LeadResponse, summary="Update lead details")
-async def update_lead(lead_id: int, lead_data: LeadUpdate):
-    """
-    Update an existing lead.
-    Args:
-        lead_id (int): ID of the lead to update.
-        lead_data (LeadUpdate): Payload containing updated lead information.
-    Returns:
-        LeadResponse: Updated lead details.
-    """
-    try:
-        with postgres_manager.get_session() as session:
-            lead = session.query(Lead).filter(Lead.id == lead_id).first()
-            if not lead:
-                raise HTTPException(status_code=404, detail="Lead not found")
-            for key, value in lead_data.dict(exclude_unset=True).items():
-                setattr(lead, key, value)
-            session.commit()
-            session.refresh(lead)
-            return LeadResponse.from_orm(lead)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error updating lead: {str(e)}")
-
-@router.get("/leads", response_model=LeadList, summary="List all leads")
-async def list_leads(
-    page: int = Query(1, ge=1, description="Page number"),
-    size: int = Query(10, ge=1, le=100, description="Number of items per page")
+@router.post("/", response_model=LeadResponse, summary="Create a new lead")
+@api_metrics.track("create_lead")
+async def create_lead(
+    lead_data: LeadCreate,
+    session: AsyncSession = Depends(get_async_session)
 ):
     """
-    List all leads with pagination.
-    Args:
-        page (int): Page number.
-        size (int): Number of items per page.
-    Returns:
-        LeadList: Paginated list of leads.
+    Create a new lead entry with AI-based scoring.
     """
     try:
-        with postgres_manager.get_session() as session:
-            query = session.query(Lead)
-            total = query.count()
-            leads = query.offset((page - 1) * size).limit(size).all()
-            return LeadList(
-                items=[LeadResponse.from_orm(lead) for lead in leads],
-                total=total,
-                page=page,
-                size=size,
-                pages=(total // size) + (1 if total % size > 0 else 0)
-            )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error listing leads: {str(e)}")
+        # Prevent duplicate leads based on email or phone
+        existing_lead = await session.execute(
+            sa.select(Lead).where(Lead.email == lead_data.email)
+        )
+        if existing_lead.scalars().first():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Lead already exists")
 
-@router.delete("/leads/{lead_id}", summary="Delete a lead")
-async def delete_lead(lead_id: int):
+        # Score the lead using AI
+        lead_data.score = score_lead(lead_data)
+
+        # Insert new lead
+        new_lead = Lead(**lead_data.dict())
+        session.add(new_lead)
+        await session.commit()
+        await session.refresh(new_lead)
+
+        # Notify clients via WebSocket
+        await broadcast_lead_updates(new_lead)
+
+        return LeadResponse.from_orm(new_lead)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error creating lead: {str(e)}")
+
+@router.get("/{lead_id}", response_model=LeadResponse, summary="Get lead details")
+@api_metrics.track("get_lead")
+async def get_lead(
+    lead_id: int,
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Fetch details of a specific lead by ID.
+    """
+    cache_key = f"lead:{lead_id}"
+    
+    try:
+        # Check Redis cache
+        if cached_data := await redis_client.get(cache_key):
+            return LeadResponse.parse_raw(cached_data)
+
+        # Fetch lead from DB
+        result = await session.execute(sa.select(Lead).where(Lead.id == lead_id))
+        lead = result.scalars().first()
+
+        if not lead:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+        # Cache result
+        await redis_client.set(cache_key, LeadResponse.from_orm(lead).json(), ex=CACHE_TTL)
+
+        return LeadResponse.from_orm(lead)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error fetching lead: {str(e)}")
+
+@router.put("/{lead_id}", response_model=LeadResponse, summary="Update lead details")
+@api_metrics.track("update_lead")
+async def update_lead(
+    lead_id: int,
+    lead_data: LeadUpdate,
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Update an existing lead.
+    """
+    try:
+        result = await session.execute(sa.select(Lead).where(Lead.id == lead_id))
+        lead = result.scalars().first()
+
+        if not lead:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+        for key, value in lead_data.dict(exclude_unset=True).items():
+            setattr(lead, key, value)
+
+        await session.commit()
+        await session.refresh(lead)
+
+        return LeadResponse.from_orm(lead)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error updating lead: {str(e)}")
+
+@router.get("/", response_model=LeadList, summary="List leads with filtering and sorting")
+@api_metrics.track("list_leads")
+async def list_leads(
+    sort_by: str = Query("created_at", enum=["created_at", "score", "lead_source"]),
+    sort_order: str = Query("desc", enum=["asc", "desc"]),
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=100),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    List leads with pagination and sorting.
+    """
+    try:
+        query = sa.select(Lead)
+
+        # Sorting
+        order_field = getattr(Lead, sort_by, Lead.created_at)
+        query = query.order_by(order_field.desc() if sort_order == "desc" else order_field.asc())
+
+        # Pagination
+        result = await session.execute(query.offset((page - 1) * size).limit(size))
+        leads = result.scalars().all()
+        
+        total = await session.scalar(sa.select(sa.func.count()).select_from(query.subquery()))
+
+        return LeadList(
+            items=[LeadResponse.from_orm(lead) for lead in leads],
+            total=total,
+            page=page,
+            size=size,
+            pages=(total + size - 1) // size,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error retrieving leads list")
+
+@router.delete("/{lead_id}", summary="Delete a lead")
+@api_metrics.track("delete_lead")
+async def delete_lead(
+    lead_id: int,
+    session: AsyncSession = Depends(get_async_session)
+):
     """
     Delete a lead by ID.
-    Args:
-        lead_id (int): ID of the lead to delete.
-    Returns:
-        dict: Confirmation of lead deletion.
     """
     try:
-        with postgres_manager.get_session() as session:
-            lead = session.query(Lead).filter(Lead.id == lead_id).first()
-            if not lead:
-                raise HTTPException(status_code=404, detail="Lead not found")
-            session.delete(lead)
-            session.commit()
-            return {"status": "success", "message": "Lead deleted successfully"}
+        result = await session.execute(sa.select(Lead).where(Lead.id == lead_id))
+        lead = result.scalars().first()
+
+        if not lead:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+        await session.delete(lead)
+        await session.commit()
+        return {"status": "success", "message": "Lead deleted successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting lead: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error deleting lead: {str(e)}")
