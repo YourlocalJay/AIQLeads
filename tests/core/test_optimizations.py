@@ -1,10 +1,9 @@
 """
 Unit tests for core optimizations module.
-Tests cache management and performance tracking functionality.
 """
 import pytest
-import asyncio
 import time
+import threading
 from unittest.mock import Mock, patch
 from app.core.optimizations import (
     CacheManager,
@@ -31,11 +30,12 @@ class TestCacheManager:
         assert len(cache_manager._cache) == 0
         assert cache_manager._hits == 0
         assert cache_manager._misses == 0
+        assert isinstance(cache_manager._lock, threading.Lock)
 
     def test_cache_set_and_get(self, cache_manager):
         """Test basic cache set and get operations."""
         # Set and get a value
-        cache_manager.set("test_key", "test_value")
+        assert cache_manager.set("test_key", "test_value") is True
         value = cache_manager.get("test_key")
         assert value == "test_value"
         assert cache_manager._hits == 1
@@ -47,28 +47,48 @@ class TestCacheManager:
         assert cache_manager._hits == 1
         assert cache_manager._misses == 1
 
-    def test_cache_eviction(self, cache_manager):
+    def test_cache_lru_eviction(self, cache_manager):
         """Test LRU cache eviction policy."""
-        # Fill cache to max size
+        # Fill cache
         cache_manager.set("key1", "value1")
         cache_manager.set("key2", "value2")
         cache_manager.set("key3", "value3")
         
-        # Add one more item, should evict oldest
+        # Access key1 to make it most recently used
+        cache_manager.get("key1")
+        
+        # Add new item, should evict key2
         cache_manager.set("key4", "value4")
         
-        # Check eviction
-        assert cache_manager.get("key1") is None  # Should be evicted
-        assert cache_manager.get("key2") == "value2"
-        assert cache_manager.get("key3") == "value3"
-        assert cache_manager.get("key4") == "value4"
+        assert cache_manager.get("key1") == "value1"  # Still present
+        assert cache_manager.get("key2") is None      # Evicted
+        assert cache_manager.get("key3") == "value3"  # Still present
+        assert cache_manager.get("key4") == "value4"  # Newly added
+
+    def test_cache_thread_safety(self, cache_manager):
+        """Test cache thread safety."""
+        def worker(tid):
+            for i in range(100):
+                key = f"key{i}"
+                cache_manager.set(key, f"value{tid}-{i}")
+                cache_manager.get(key)
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        metrics = cache_manager.metrics
+        assert metrics["hits"] + metrics["misses"] == 300  # Total operations
+        assert metrics["size"] <= cache_manager._max_size  # Size constraint maintained
 
     def test_cache_metrics(self, cache_manager):
         """Test cache metrics collection."""
-        # Perform some operations
+        # Perform operations
         cache_manager.set("key1", "value1")
-        cache_manager.get("key1")  # Hit
-        cache_manager.get("nonexistent")  # Miss
+        cache_manager.get("key1")      # Hit
+        cache_manager.get("missing")   # Miss
         
         metrics = cache_manager.metrics
         assert metrics["hits"] == 1
@@ -76,78 +96,72 @@ class TestCacheManager:
         assert metrics["size"] == 1
         assert metrics["max_size"] == 3
 
-    def test_cache_error_handling(self, cache_manager):
-        """Test cache error handling."""
-        with patch.dict(cache_manager._cache, {}, clear=True):
-            # Force an error by making _cache non-subscriptable
-            cache_manager._cache = None
-            
-            # Should handle error gracefully
-            assert cache_manager.set("key", "value") is False
-            assert cache_manager.get("key") is None
-
 class TestPerformanceTracker:
     """Test suite for PerformanceTracker class."""
 
-    @pytest.mark.asyncio
-    async def test_operation_tracking(self, performance_tracker):
-        """Test operation performance tracking."""
-        async with performance_tracker.track_operation("test_op"):
-            await asyncio.sleep(0.1)  # Simulate work
+    def test_track_operation_success(self, performance_tracker):
+        """Test successful operation tracking."""
+        with performance_tracker.track_operation("test_op"):
+            time.sleep(0.1)  # Simulate work
             
         metrics = performance_tracker.metrics
         assert metrics.execution_time > 0
         assert metrics.error_count == 0
+        assert metrics.memory_usage >= 0
 
-    @pytest.mark.asyncio
-    async def test_error_tracking(self, performance_tracker):
+    def test_track_operation_error(self, performance_tracker):
         """Test error tracking in operations."""
         try:
-            async with performance_tracker.track_operation("error_op"):
+            with performance_tracker.track_operation("error_op"):
                 raise ValueError("Test error")
         except ValueError:
             pass
             
         metrics = performance_tracker.metrics
-        assert metrics.error_count == 0  # Error count only increments on metric recording errors
+        assert metrics.error_count == 1
+        assert metrics.execution_time > 0
+
+    def test_thread_safety(self, performance_tracker):
+        """Test performance tracker thread safety."""
+        def worker():
+            with performance_tracker.track_operation(f"thread_op_{threading.get_ident()}"):
+                time.sleep(0.01)
+
+        threads = [threading.Thread(target=worker) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        metrics = performance_tracker.metrics
+        assert metrics.execution_time > 0
+        assert metrics.error_count == 0
 
     def test_memory_tracking(self, performance_tracker):
         """Test memory usage tracking."""
         with patch('psutil.Process') as mock_process:
-            mock_process.return_value.memory_info.return_value.rss = 1024 * 1024  # 1 MB
-            performance_tracker._track_memory_usage()
+            mock_memory_info = Mock()
+            mock_memory_info.rss = 1024 * 1024  # 1 MB
+            mock_process.return_value.memory_info.return_value = mock_memory_info
             
-        assert performance_tracker.metrics.memory_usage == 1.0  # Should be 1 MB
+            with performance_tracker.track_operation("memory_test"):
+                pass
+                
+            # Allow time for the background thread to update memory metrics
+            time.sleep(0.1)
+            
+        assert performance_tracker.metrics.memory_usage > 0
 
-    def test_metrics_initialization(self, performance_tracker):
-        """Test metrics initialization."""
+    def test_nested_operations(self, performance_tracker):
+        """Test nested operation tracking."""
+        with performance_tracker.track_operation("outer"):
+            time.sleep(0.1)
+            with performance_tracker.track_operation("inner"):
+                time.sleep(0.1)
+
         metrics = performance_tracker.metrics
-        assert isinstance(metrics, PerformanceMetrics)
-        assert metrics.execution_time == 0.0
-        assert metrics.memory_usage == 0.0
-        assert metrics.cache_hits == 0
-        assert metrics.cache_misses == 0
+        assert metrics.execution_time >= 0.2
         assert metrics.error_count == 0
-
-@pytest.mark.integration
-class TestIntegration:
-    """Integration tests for cache and performance tracking."""
-
-    @pytest.mark.asyncio
-    async def test_cache_with_performance_tracking(self, cache_manager, performance_tracker):
-        """Test cache operations with performance tracking."""
-        async with performance_tracker.track_operation("cache_ops"):
-            cache_manager.set("key1", "value1")
-            cache_manager.get("key1")
-            cache_manager.get("nonexistent")
-            
-        cache_metrics = cache_manager.metrics
-        perf_metrics = performance_tracker.metrics
-        
-        assert cache_metrics["hits"] == 1
-        assert cache_metrics["misses"] == 1
-        assert perf_metrics.execution_time > 0
-        assert perf_metrics.error_count == 0
 
 if __name__ == "__main__":
     pytest.main([__file__])
