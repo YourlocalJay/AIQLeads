@@ -1,6 +1,6 @@
 # Core Documentation
 
-This section contains fundamental documentation about the AIQLeads system architecture, development practices, and deployment procedures.
+This section contains fundamental documentation about the AIQLeads system architecture and development practices.
 
 ## Sections
 
@@ -18,9 +18,4 @@ Guidelines and practices for development, including:
 - Code review process
 - Version control workflow
 
-### Deployment
-Deployment procedures and requirements, including:
-- Environment setup
-- Configuration management
-- Deployment checklist
-- Rollback procedures
+For deployment procedures and current project status, please refer to our [Universal Prompt](../UNIVERSAL_PROMPT.md).
