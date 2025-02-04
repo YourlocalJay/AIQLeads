@@ -1,0 +1,38 @@
+groups:
+  - name: AIQLeads
+    rules:
+      - alert: HighCPUUsage
+        expr: cpu_usage > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High CPU usage detected
+          description: CPU usage is above 80% for 5 minutes
+
+      - alert: HighMemoryUsage
+        expr: memory_usage > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High memory usage detected
+          description: Memory usage is above 85% for 5 minutes
+
+      - alert: APIHighLatency
+        expr: http_request_duration_seconds > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High API latency detected
+          description: API requests are taking more than 2 seconds
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.*"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High error rate detected
+          description: Error rate is above 10% for 5 minutes
