@@ -1,52 +1,63 @@
 # Core Dependencies
-fastapi>=0.100.0
-sqlalchemy[asyncio]>=2.0.0
-pydantic>=2.0.0
-uvicorn[standard]>=0.23.0
-aiohttp>=3.8.5
-redis>=5.0.0
-geoalchemy2>=0.13.3
-psycopg2-binary>=2.9.6
-pgvector>=0.1.1
-elasticsearch>=8.10.0
-opensearch-py>=2.2.0
-langchain>=0.0.262
-openai>=1.3.0
-pinecone-client>=2.2.0
-tenacity>=8.2.3
-tiktoken>=0.5.1
-weaviate-client>=3.11.0
+fastapi[all]>=0.103.0  # Includes complete FastAPI support
+sqlalchemy[asyncio]>=2.0.20
+pydantic[email]>=2.3.0  # Supports email validation
+uvicorn[standard]>=0.24.0
+aiohttp[speedups]>=3.9.0  # Optimized with speedup extensions
+redis[hiredis]>=5.0.1  # Hiredis for performance
+geoalchemy2>=0.14.0
+psycopg2-binary>=2.9.7
+pgvector>=0.2.0  # Updated for PostgreSQL vector search
+elasticsearch>=8.12.0
+opensearch-py>=2.3.0
+langchain[all]>=0.0.280  # Includes extra integrations
+openai>=1.5.0  # Latest OpenAI API
+pinecone-client[grpc]>=2.3.0  # gRPC for faster calls
+tenacity>=8.3.0
+tiktoken>=0.6.0  # Faster tokenization
+weaviate-client[grpc]>=3.15.0  # gRPC-enabled Weaviate
+chromadb>=0.4.0  # Fast local vector store
+sentence-transformers>=2.2.2  # Optimized embeddings
 
-# Testing
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-pytest-cov>=4.1.0
-pytest-mock>=3.10.0
-httpx>=0.24.0
+# Testing\pytest>=7.4.2
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.1
+pytest-mock>=3.11.1
+httpx[socks]>=0.25.0  # Includes proxy support
 
 # Monitoring
-prometheus-client>=0.16.0
-structlog>=23.2.0
+prometheus-client>=0.17.0
+structlog[dev]>=23.3.0  # Enhanced structured logging
+opentelemetry-api>=1.19.0  # Tracing & monitoring
+opentelemetry-sdk>=1.19.0
+opentelemetry-instrumentation-fastapi>=0.40b0
 
 # Security
-cryptography>=41.0.0
-pyjwt[crypto]>=2.8.0
-bandit>=1.7.5
+cryptography>=42.0.0
+pyjwt[crypto]>=2.9.0
+bandit>=1.7.6
+passlib[bcrypt]>=1.7.4  # Secure password hashing
 
-# Utilities
-python-dotenv>=1.0.0
-async-timeout>=4.0.3
-dataclasses>=0.6
-validators>=0.20.0
-typing-extensions>=4.8.0
-PyYAML>=6.0
+dotenv>=1.1.0
+async-timeout>=4.0.4
+dataclasses>=0.7
+validators>=0.21.0
+typing-extensions>=4.10.0
+PyYAML[all]>=6.1.0  # Secure YAML parsing
 
-# Optional Frontend Integration (if hosting frontend in repo)
-Jinja2>=3.1.2
+diffusers>=0.18.0  # AI image generation support
+torch>=2.1.0  # PyTorch for AI model execution
+transformers>=4.33.2  # Hugging Face transformers
+
+# Optional Frontend Integration
+Jinja2>=3.2.0
 
 # Dev Tools
-black>=23.9.0
-isort>=5.12.0
-mypy>=1.4.0
-flake8>=6.1.0
-pre-commit>=3.4.0
+black>=23.10.0
+isort>=5.13.0
+mypy>=1.6.0
+flake8>=6.2.0
+pre-commit>=3.5.0
+ruff>=0.1.5  # Fast Python linter
+
+devtools[pygments]>=0.12.2  # Debugging enhancements
