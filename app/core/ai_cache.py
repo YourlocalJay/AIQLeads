@@ -1,265 +1,106 @@
-"""
-AI-optimized caching system for AIQLeads.
-Implements adaptive caching with LLM usage patterns and predictive prefetching.
-"""
-from typing import Any, Optional, Dict, List, Tuple, Union
-from dataclasses import dataclass
+from typing import Any, Optional, Union
 from datetime import datetime, timedelta
-import threading
-import logging
-import json
+import redis
 import sqlite3
-import asyncio
-from collections import defaultdict
-
-logger = logging.getLogger(__name__)
+import threading
+from dataclasses import dataclass
+from collections import OrderedDict
 
 @dataclass
-class AIUsageMetrics:
-    """Metrics for AI operation monitoring."""
-    token_count: int = 0
-    processing_time: float = 0.0
-    cost: float = 0.0
-    cache_hits: int = 0
-    cache_misses: int = 0
-    last_access: Optional[datetime] = None
-    lead_id: Optional[str] = None
-    region: Optional[str] = None
+class CacheItem:
+    value: Any
+    created_at: datetime
+    ttl: Optional[int] = None
+    weight: float = 1.0
+    access_count: int = 0
 
-class AICacheStats:
-    """Enhanced statistics for AI cache performance monitoring."""
-    
-    def __init__(self):
-        self.hits = 0
-        self.misses = 0
-        self.evictions = 0
-        self.token_usage = 0
-        self.total_cost = 0.0
-        self.access_patterns: Dict[str, int] = defaultdict(int)
-        self.region_stats: Dict[str, Dict] = defaultdict(lambda: {
-            'hits': 0, 'misses': 0, 'costs': 0.0
-        })
-        self._lock = threading.Lock()
-
-    def record_hit(self, key: str, region: Optional[str] = None):
-        with self._lock:
-            self.hits += 1
-            self.access_patterns[key] += 1
-            if region:
-                self.region_stats[region]['hits'] += 1
-
-    def record_miss(self, key: str, region: Optional[str] = None):
-        with self._lock:
-            self.misses += 1
-            if region:
-                self.region_stats[region]['misses'] += 1
-
-    def record_cost(self, cost: float, region: Optional[str] = None):
-        with self._lock:
-            self.total_cost += cost
-            if region:
-                self.region_stats[region]['costs'] += cost
-
-class AICache:
-    """AI-optimized cache implementation with predictive prefetching."""
-    
-    def __init__(
-        self,
-        max_size: int = 1000,
-        ttl: int = 3600,  # Default 1 hour TTL
-        cost_threshold: float = 0.05,  # Cost threshold for caching decision
-        sqlite_path: str = "ai_cache.db"
-    ):
-        self._memory_cache: Dict[str, Tuple[Any, datetime, AIUsageMetrics]] = {}
+class AIOptimizedCache:
+    def __init__(self, max_size: int = 1000, redis_url: Optional[str] = None):
+        self._cache = OrderedDict()
         self._max_size = max_size
-        self._default_ttl = ttl
-        self._cost_threshold = cost_threshold
         self._lock = threading.Lock()
-        self.stats = AICacheStats()
-        
-        # Initialize SQLite for persistent storage
-        self._init_sqlite(sqlite_path)
-        
-    def _init_sqlite(self, path: str):
-        """Initialize SQLite database for persistent cache storage."""
-        self._db = sqlite3.connect(path, check_same_thread=False)
-        self._db.execute("""
-            CREATE TABLE IF NOT EXISTS ai_cache (
+        self._redis = redis.from_url(redis_url) if redis_url else None
+        self._setup_sqlite()
+
+    def _setup_sqlite(self):
+        self._conn = sqlite3.connect('cache_stats.db', check_same_thread=False)
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS cache_stats (
                 key TEXT PRIMARY KEY,
-                value TEXT,
-                expiry TIMESTAMP,
-                metrics TEXT
+                access_count INTEGER,
+                last_access TIMESTAMP,
+                weight REAL
             )
         """)
-        self._db.commit()
 
-    async def get(
-        self,
-        key: str,
-        region: Optional[str] = None,
-        lead_id: Optional[str] = None
-    ) -> Optional[Any]:
-        """Get value from cache with AI-optimized retrieval."""
+    def get(self, key: str) -> Optional[Any]:
         with self._lock:
-            # Check memory cache first
-            if key in self._memory_cache:
-                value, expiry, metrics = self._memory_cache[key]
-                if datetime.now() < expiry:
-                    self.stats.record_hit(key, region)
-                    metrics.cache_hits += 1
-                    metrics.last_access = datetime.now()
-                    metrics.lead_id = lead_id
-                    metrics.region = region
-                    return value
-                else:
-                    del self._memory_cache[key]
+            if key in self._cache:
+                item = self._cache[key]
+                if item.ttl and datetime.now() - item.created_at > timedelta(seconds=item.ttl):
+                    del self._cache[key]
+                    return None
+                self._update_stats(key)
+                return item.value
+            return self._get_from_persistent(key)
 
-            # Check persistent storage
-            try:
-                cur = self._db.execute(
-                    "SELECT value, expiry, metrics FROM ai_cache WHERE key = ?",
-                    (key,)
-                )
-                result = cur.fetchone()
-                if result:
-                    value, expiry_str, metrics_json = result
-                    expiry = datetime.fromisoformat(expiry_str)
-                    if datetime.now() < expiry:
-                        self.stats.record_hit(key, region)
-                        metrics = AIUsageMetrics(**json.loads(metrics_json))
-                        metrics.cache_hits += 1
-                        metrics.last_access = datetime.now()
-                        metrics.lead_id = lead_id
-                        metrics.region = region
-                        
-                        # Promote to memory cache if frequently accessed
-                        if metrics.cache_hits > 5:
-                            self._memory_cache[key] = (
-                                json.loads(value),
-                                expiry,
-                                metrics
-                            )
-                        return json.loads(value)
-                    else:
-                        cur.execute(
-                            "DELETE FROM ai_cache WHERE key = ?",
-                            (key,)
-                        )
-                        self._db.commit()
-            except Exception as e:
-                logger.error(f"Error reading from persistent cache: {e}")
-
-            self.stats.record_miss(key, region)
-            return None
-
-    async def put(
-        self,
-        key: str,
-        value: Any,
-        metrics: AIUsageMetrics,
-        ttl: Optional[int] = None,
-        region: Optional[str] = None
-    ) -> bool:
-        """Store value in cache with AI-optimized storage decisions."""
-        expiry = datetime.now() + timedelta(
-            seconds=ttl if ttl is not None else self._default_ttl
-        )
-        
-        # Only cache if cost exceeds threshold (worth caching)
-        if metrics.cost < self._cost_threshold:
-            return False
-
+    def set(self, key: str, value: Any, ttl: Optional[int] = None, weight: float = 1.0):
         with self._lock:
-            # Evict if needed
-            while len(self._memory_cache) >= self._max_size:
-                self._evict_lru()
+            if len(self._cache) >= self._max_size:
+                self._evict()
+            self._cache[key] = CacheItem(
+                value=value,
+                created_at=datetime.now(),
+                ttl=ttl,
+                weight=weight
+            )
+            self._persist(key, value, ttl, weight)
 
-            try:
-                # Store in memory cache
-                self._memory_cache[key] = (value, expiry, metrics)
-                
-                # Store in persistent cache
-                self._db.execute(
-                    """
-                    INSERT OR REPLACE INTO ai_cache
-                    (key, value, expiry, metrics)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (
-                        key,
-                        json.dumps(value),
-                        expiry.isoformat(),
-                        json.dumps(metrics.__dict__)
-                    )
-                )
-                self._db.commit()
-                
-                self.stats.record_cost(metrics.cost, region)
-                return True
-            except Exception as e:
-                logger.error(f"Error writing to cache: {e}")
-                return False
-
-    def _evict_lru(self):
-        """Evict least recently used items with AI cost considerations."""
-        if not self._memory_cache:
+    def _evict(self):
+        if not self._cache:
             return
+        
+        # Use weighted scoring for eviction
+        scores = []
+        for key, item in self._cache.items():
+            age = (datetime.now() - item.created_at).total_seconds()
+            score = (item.access_count * item.weight) / (age + 1)
+            scores.append((score, key))
+        
+        # Remove item with lowest score
+        scores.sort()
+        del self._cache[scores[0][1]]
 
-        # Consider both access time and cost when evicting
-        def eviction_score(item):
-            _, expiry, metrics = item[1]
-            time_factor = (datetime.now() - metrics.last_access).total_seconds() \
-                if metrics.last_access else float('inf')
-            cost_factor = metrics.cost if metrics.cost else 0
-            return time_factor / (1 + cost_factor)  # Lower score = keep in cache
+    def _update_stats(self, key: str):
+        item = self._cache[key]
+        item.access_count += 1
+        self._conn.execute(
+            "UPDATE cache_stats SET access_count = access_count + 1, last_access = ? WHERE key = ?",
+            (datetime.now(), key)
+        )
 
-        # Find item with highest eviction score
-        key_to_evict = max(
-            self._memory_cache.items(),
-            key=lambda x: eviction_score(x)
-        )[0]
+    def _persist(self, key: str, value: Any, ttl: Optional[int], weight: float):
+        if self._redis:
+            self._redis.set(key, value, ex=ttl)
+        
+        self._conn.execute("""
+            INSERT OR REPLACE INTO cache_stats (key, access_count, last_access, weight)
+            VALUES (?, 0, ?, ?)
+        """, (key, datetime.now(), weight))
 
-        del self._memory_cache[key_to_evict]
-        self.stats.evictions += 1
-
-    async def prefetch(
-        self,
-        keys: List[str],
-        loader_func: callable,
-        region: Optional[str] = None
-    ):
-        """Predictively fetch and cache AI responses."""
-        async def fetch_single(key: str):
-            try:
-                value, metrics = await loader_func(key)
-                if value is not None:
-                    await self.put(key, value, metrics, region=region)
-            except Exception as e:
-                logger.error(f"Error prefetching key {key}: {e}")
-
-        # Fetch in parallel with rate limiting
-        semaphore = asyncio.Semaphore(5)  # Limit concurrent prefetches
-        async with semaphore:
-            await asyncio.gather(*[fetch_single(key) for key in keys])
-
-    def get_region_stats(self, region: str) -> Dict:
-        """Get cache statistics for a specific region."""
-        return self.stats.region_stats.get(region, {
-            'hits': 0,
-            'misses': 0,
-            'costs': 0.0
-        })
+    def _get_from_persistent(self, key: str) -> Optional[Any]:
+        if self._redis:
+            value = self._redis.get(key)
+            if value:
+                return value
+        return None
 
     def clear(self):
-        """Clear all cache data."""
         with self._lock:
-            self._memory_cache.clear()
-            self._db.execute("DELETE FROM ai_cache")
-            self._db.commit()
+            self._cache.clear()
+            if self._redis:
+                self._redis.flushdb()
+            self._conn.execute("DELETE FROM cache_stats")
 
     def __del__(self):
-        """Cleanup database connection."""
-        try:
-            self._db.close()
-        except:
-            pass
+        self._conn.close()
