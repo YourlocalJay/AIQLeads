@@ -25,13 +25,17 @@ validate_repo() {
 
 # Cleanup untracked and ignored files
 cleanup_untracked_files() {
-    log_message "$YELLOW" "Cleaning untracked files..."
+    log_message "$YELLOW" "Analyzing untracked files..."
     
-    # Dry run first to show what will be deleted
-    log_message "$GREEN" "Files to be removed:"
+    # Show untracked files
+    log_message "$GREEN" "Untracked files:"
+    git ls-files --others --exclude-standard
+
+    # Dry run of git clean
+    log_message "$GREEN" "Files that will be removed:"
     git clean -n -d -x
     
-    read -p "Proceed with removal? (y/N) " confirm
+    read -p "Do you want to remove these untracked files? (y/N) " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         git clean -f -d -x
         log_message "$GREEN" "Untracked files cleaned successfully!"
@@ -45,27 +49,31 @@ consolidate_docs() {
     log_message "$YELLOW" "Consolidating documentation..."
     mkdir -p docs/archive
 
-    # Move old documentation files to archive
-    mv README.md docs/archive/README.md.bak 2>/dev/null
-    mv UPDATE.md docs/archive/UPDATE.md.bak 2>/dev/null
-    mv REVIEW.md docs/archive/REVIEW.md.bak 2>/dev/null
+    # Move existing docs to archive
+    for doc in README.md UPDATE.md REVIEW.md; do
+        if [ -f "$doc" ]; then
+            mv "$doc" "docs/archive/${doc}.bak"
+            log_message "$GREEN" "Archived $doc"
+        fi
+    done
 
-    # Create comprehensive documentation
-    cat > docs/README.md << EOL
-# AIQLeads Project Documentation
+    # Create comprehensive README
+    cat > README.md << EOL
+# AIQLeads Project
 
 ## Project Overview
-[Brief project description]
-
-## Versions
-- Current Version: [X.Y.Z]
-- Last Updated: $(date '+%Y-%m-%d')
+Comprehensive AI-driven lead management system
 
 ## Quick Start
-[Installation and setup instructions]
+- Clone the repository
+- Install dependencies: \`pip install -r requirements.txt\`
+- Run the application
 
-## Archived Documents
-Previous documentation can be found in the \`docs/archive\` directory.
+## Documentation
+Detailed documentation available in the \`docs/\` directory.
+
+## Previous Versions
+Previous documentation can be found in \`docs/archive/\`.
 EOL
 
     log_message "$GREEN" "Documentation consolidated!"
@@ -82,11 +90,11 @@ clean_python_artifacts() {
 # Prune old git branches
 prune_branches() {
     log_message "$YELLOW" "Pruning merged branches..."
-    git branch --merged | grep -v "\*" | grep -v "main" | grep -v "develop" | xargs -n 1 git branch -d
+    git branch --merged | grep -v "\*" | grep -v "main" | grep -v "develop" | xargs -n 1 git branch -d 2>/dev/null
     log_message "$GREEN" "Branches pruned successfully!"
 }
 
-# Run all cleanup tasks
+# Main cleanup function
 main() {
     validate_repo
     
