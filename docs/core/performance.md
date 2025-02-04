@@ -34,6 +34,13 @@ The Performance Optimization Engine is a core component providing AI-driven adap
 - Error rate analysis
 - Real-time throughput measurement
 
+#### 4. Rate Limiting System
+- For detailed implementation, see [Rate Limiter Documentation](../RATE_LIMITER.md)
+- Multi-region Redis-backed rate limiting
+- Adaptive failure handling with circuit breakers
+- Configurable rate limits by endpoint and user type
+- Real-time limit adjustment based on system load
+
 ## Core Components
 
 ### AIQResourcePool

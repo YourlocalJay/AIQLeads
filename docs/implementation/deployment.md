@@ -3,6 +3,34 @@
 ## Overview
 This document outlines the deployment process for the AIQLeads system, including pre-deployment checks, deployment steps, and post-deployment verification.
 
+## Timeline
+- Target Launch: February 15, 2025
+- Current Status: On track
+
+### Critical Path Items (from #69)
+1. System Integration (Days 1-3)
+   - [ ] Complete final testing
+   - [ ] Production validation
+   - [ ] Security verification
+
+2. Performance Optimization (Days 2-4)
+   - [ ] Production tuning
+   - [ ] Resource optimization
+   - [ ] Cost efficiency
+   - [ ] Response time tuning
+
+3. Monitoring Setup (Days 3-5)
+   - [ ] Configure dashboards
+   - [ ] Set alert thresholds
+   - [ ] Validate metrics
+   - [ ] Test notifications
+
+4. Production Deployment (Days 6-8)
+   - [ ] Environment preparation
+   - [ ] Database migration
+   - [ ] Service deployment
+   - [ ] Traffic migration
+
 ## Deployment Status
 - Ready for production rollout
 - Monitoring configured
