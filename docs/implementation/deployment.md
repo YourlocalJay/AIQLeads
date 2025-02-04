@@ -41,21 +41,120 @@ This document outlines the deployment process for the AIQLeads system, including
 
 ### Environment Validation
 - [ ] Infrastructure provisioned
+    ```bash
+    # Verify AWS resources
+    aws ec2 describe-instances --filters "Name=tag:Environment,Values=prod"
+    aws elasticache describe-cache-clusters
+    aws rds describe-db-instances
+    
+    # Expected: All resources show 'available' status
+    ```
+
 - [ ] Network configuration verified
+    ```bash
+    # Test VPC connectivity
+    aws ec2 describe-vpc-peering-connections
+    aws ec2 describe-security-groups
+    
+    # Verify load balancer configuration
+    aws elbv2 describe-target-groups
+    aws elbv2 describe-target-health
+    
+    # Expected: All connections active, health checks passing
+    ```
+
 - [ ] Security groups configured
+    ```bash
+    # Verify security group rules
+    aws ec2 describe-security-groups --group-ids sg-xxxxx
+    
+    # Expected: Only required ports open, proper CIDR ranges
+    ```
+
 - [ ] SSL certificates installed
+    ```bash
+    # Check certificate expiration
+    aws acm list-certificates
+    aws acm describe-certificate --certificate-arn arn:aws:acm:...
+    
+    # Expected: Valid certificate with >30 days until expiration
+    ```
 
 ### Configuration Verification
 - [ ] Environment variables set
+    ```bash
+    # Verify environment variables in ECS task definitions
+    aws ecs describe-task-definition --task-definition aiqleads-prod
+    
+    # Expected: All required variables present and correctly set
+    ```
+
 - [ ] Database connections tested
+    ```python
+    # Test database connectivity
+    python -c 'from app.core.config import settings; from app.db import engine; engine.connect()'
+    
+    # Expected: Connection successful, no timeout
+    ```
+
 - [ ] Cache configuration verified
+    ```python
+    # Test Redis connectivity and configuration
+    python -c 'from app.core.cache import redis_client; redis_client.ping()'
+    
+    # Expected: PONG response, proper replica configuration
+    ```
+
 - [ ] Service dependencies checked
+    ```bash
+    # Health check all dependencies
+    curl -f https://api.fireworks.ai/health
+    python scripts/verify_dependencies.py
+    
+    # Expected: All services respond with 200 OK
+    ```
 
 ### Database Migration
 - [ ] Backup procedures tested
+    ```bash
+    # Create test backup
+    python manage.py db-backup --environment=staging
+    
+    # Verify backup integrity
+    python manage.py verify-backup latest
+    
+    # Expected: Backup created and verified successfully
+    ```
+
 - [ ] Migration scripts verified
+    ```bash
+    # Test migrations in staging
+    python manage.py db upgrade --environment=staging
+    
+    # Verify data integrity
+    python manage.py verify-migration
+    
+    # Expected: All migrations apply cleanly, data verified
+    ```
+
 - [ ] Rollback scripts prepared
+    ```bash
+    # Test rollback procedure in staging
+    python manage.py db downgrade --environment=staging
+    
+    # Verify system functionality
+    python scripts/integration_tests.py
+    
+    # Expected: System returns to previous state correctly
+    ```
+
 - [ ] Data integrity checks defined
+    ```python
+    # Run integrity checks
+    python manage.py verify-data-integrity
+    
+    # Expected: All relationships and constraints valid
+    ```
 
 ## Deployment Process
 
