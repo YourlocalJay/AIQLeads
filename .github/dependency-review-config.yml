@@ -1,0 +1,30 @@
+version: 2
+checks:
+  - type: license
+    # Only use permissive open source licenses
+    allow:
+      - Apache-2.0
+      - MIT
+      - BSD-3-Clause
+    deny:
+      - GPL-2.0
+      - AGPL-1.0
+
+  # Prevent outdated packages
+  - type: package-ecosystem
+    require-scope: true
+    configurations:
+      - '-*'
+      
+  # Block security vulnerabilities
+  - type: vulnerability
+    severity: critical
+
+fail_on_severity: critical
+
+allow-dependencies:
+  # Explicitly allowed development dependencies
+  - dependency: 'pytest'
+  - dependency: 'black'
+  - dependency: 'ruff'
+  - dependency: 'isort'
