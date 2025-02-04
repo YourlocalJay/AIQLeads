@@ -1,77 +1,205 @@
 # Contributing to AIQLeads
 
-## Branch Strategy
+## Development Workflow
 
-We follow a strict GitFlow branching strategy:
+### Branch Strategy
+We use GitFlow with the following branches:
 
-### Main Branches
-- `main`: Production-ready code
-  - Protected branch
-  - Requires PR review
-  - Always deployable
-- `develop`: Integration branch for features
-  - Protected branch
-  - Requires PR review
-  - Base for feature branches
+1. `main`
+   - Production-ready code
+   - Protected branch
+   - Requires pull request review
+   - Must pass all tests
 
-### Supporting Branches
-- `feature/*`: New features
-  - Branch from: `develop`
-  - Merge to: `develop`
-  - Naming: `feature/description-in-kebab-case`
-  - Delete after merge
-- `hotfix/*`: Emergency fixes
-  - Branch from: `main`
-  - Merge to: `main` and `develop`
-  - Naming: `hotfix/issue-description`
-- `release/*`: Release preparation
-  - Branch from: `develop`
-  - Merge to: `main` and `develop`
-  - Naming: `release/vX.Y.Z`
+2. `develop`
+   - Integration branch
+   - Feature branches merge here
+   - Continuous testing
 
-## Development Process
+3. Feature Branches
+   - Branch from: `develop`
+   - Branch naming: `feature/[description]`
+   - Merge to: `develop`
+   - Delete after merge
 
-1. Create feature branch from `develop`
-2. Implement changes
-3. Write/update tests
-4. Update documentation
-5. Submit pull request to `develop`
-6. Delete branch after merge
+4. Bugfix Branches
+   - Branch from: `develop`
+   - Branch naming: `bugfix/[description]`
+   - Merge to: `develop`
+   - Delete after merge
 
-## Code Standards
+5. Release Branches
+   - Branch from: `develop`
+   - Branch naming: `release/[version]`
+   - Merge to: `main` and `develop`
+   - Tag with version
 
-- Follow PEP 8 for Python code
-- Write comprehensive tests
-- Document all functions and classes
-- Keep commits atomic and well-described
+6. Hotfix Branches
+   - Branch from: `main`
+   - Branch naming: `hotfix/[description]`
+   - Merge to: `main` and `develop`
+   - Tag with version
 
-## Pull Request Process
+### Commit Guidelines
 
-1. Update relevant documentation
-2. Update the README.md if needed
-3. Update the changelog
-4. Get review from at least one team member
-5. Ensure CI passes
+#### Commit Messages
+Use semantic commit messages:
+```
+type(scope): description
 
-## Testing
+[optional body]
 
-- Write unit tests for all new code
-- Maintain at least 80% code coverage
-- Include integration tests where appropriate
-- Test performance impact of changes
+[optional footer]
+```
 
-## Branch Cleanup
+Types:
+- feat: New feature
+- fix: Bug fix
+- docs: Documentation
+- style: Formatting
+- refactor: Code restructuring
+- test: Adding tests
+- chore: Maintenance
 
-- Branches are automatically deleted after merge
-- Stale branches (60+ days old) are marked for cleanup
-- Archive important branches if needed
-- Regular cleanup of stale branches
+Example:
+```
+feat(auth): add OAuth2 authentication
 
-## Release Process
+Implement OAuth2 flow with Google provider
+Add user profile sync
 
-1. Create release branch
-2. Update version numbers
-3. Run final tests
-4. Create PR to `main`
-5. Tag release after merge
-6. Merge changes back to `develop`
+Closes #123
+```
+
+### Pull Requests
+
+#### Creating PRs
+1. Update branch from develop
+2. Run tests locally
+3. Update documentation
+4. Create detailed PR description
+
+#### PR Template
+```markdown
+### Changes
+Describe your changes here
+
+### Testing
+- [ ] Unit tests
+- [ ] Integration tests
+- [ ] Manual testing
+
+### Documentation
+- [ ] Updated docs
+- [ ] Added examples
+
+### Related Issues
+- Fixes #123
+- Related to #456
+```
+
+#### Review Process
+1. Code review by team members
+2. Address feedback
+3. Update tests if needed
+4. Get final approval
+
+### Code Style
+
+#### Python
+- Follow PEP 8
+- Use Black formatter
+- Maximum line length: 88
+- Use type hints
+
+Example:
+```python
+from typing import List, Optional
+
+def process_data(items: List[str], limit: Optional[int] = None) -> dict:
+    """Process input items with optional limit.
+
+    Args:
+        items: List of items to process
+        limit: Optional processing limit
+
+    Returns:
+        Processed data dictionary
+    """
+    result = {}
+    for item in items[:limit]:
+        result[item] = len(item)
+    return result
+```
+
+#### Documentation
+- Use docstrings (Google style)
+- Add type hints
+- Include examples
+- Update README.md
+
+### Testing
+
+#### Unit Tests
+- Use pytest
+- Follow AAA pattern
+- Mock external services
+- Name tests descriptively
+
+Example:
+```python
+def test_process_data_with_limit():
+    # Arrange
+    items = ["a", "bb", "ccc"]
+    limit = 2
+
+    # Act
+    result = process_data(items, limit)
+
+    # Assert
+    assert len(result) == 2
+    assert result["a"] == 1
+    assert result["bb"] == 2
+```
+
+#### Integration Tests
+- Test API endpoints
+- Use test database
+- Clean up after tests
+- Check error cases
+
+### Documentation
+
+#### API Documentation
+- Use OpenAPI/Swagger
+- Include examples
+- Document errors
+- Keep up to date
+
+#### Code Documentation
+- Add inline comments
+- Write clear docstrings
+- Update README.md
+- Create examples
+
+### Review Guidelines
+
+#### Code Review
+1. Check functionality
+2. Verify tests
+3. Review documentation
+4. Check performance
+5. Look for security issues
+
+#### Review Checklist
+- [ ] Follows style guide
+- [ ] Has tests
+- [ ] Updates docs
+- [ ] Handles errors
+- [ ] Performance considered
+
+### Getting Help
+- Check documentation
+- Ask in team chat
+- Open an issue
+- Request review

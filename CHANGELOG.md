@@ -2,62 +2,67 @@
 
 ## AIQLeads MVP Development
 
-This changelog documents major updates, enhancements, and fixes for the AIQLeads project.
+This changelog documents major updates, enhancements, and fixes for the AIQLeads project using semantic versioning.
 
 ---
 
-## [Unreleased]
+## [1.1.0] - 2025-02-04
 ### Added
-- Complete `Usage.md` guide with setup, usage, and troubleshooting details.
-- Advanced fraud detection integration into `lead_validation_service.py`.
-- Circuit breaker mechanisms for rate limiters in `rate_limiter.py`.
+- AI-optimized cache system
+- AI-enhanced circuit breaker
+- AI resource monitoring
+- AI-aware versioning
+- Enhanced recommendation engine
+- Basic regional analysis
 
 ### Updated
-- Enhanced `craigslist_scraper.py` to improve parsing reliability and handling of pagination.
-- Elasticsearch integration for full-text search across leads.
-- Schema documentation in `README.md` for all database models.
+- Monitoring setup with Grafana dashboards
+- Performance optimization for production
+- Documentation structure and organization
+- Deployment procedures and checklists
 
 ### Fixed
-- Resolved intermittent Redis connection failures in the rate limiter service.
-- Addressed pagination bugs in the Facebook Marketplace scraper.
+- Redis connection stability
+- Rate limiting edge cases
+- Memory utilization under load
+- Thread timing variances
 
 ---
 
 ## [1.0.0] - 2025-01-20
 ### Added
-- Initial release of the AIQLeads MVP.
-- Implemented core features:
-  - Lead marketplace with filtering by price, location, and property type.
-  - Dynamic pricing service integrated with subscription tiers.
-  - Credit-based purchasing system with Stripe and PayPal support.
-  - AI-powered recommendations using Pinecone for vector search.
-- Geospatial queries powered by PostgreSQL + PostGIS.
-- Redis-based cart management with per-item timers.
-- Initial scrapers for Zillow, Craigslist, FSBO, and Facebook Marketplace.
-- Fraud detection service for validating leads during ingestion.
+- Initial release of the AIQLeads MVP
+- Core features:
+  - Lead marketplace with filtering
+  - Dynamic pricing service
+  - Credit-based purchasing
+  - AI-powered recommendations
+  - Geospatial queries
+  - Redis-based cart management
+  - Initial scrapers
+  - Fraud detection service
 
 ### Updated
-- Improved test coverage across core services (lead marketplace, dynamic pricing).
-- Optimized PostgreSQL queries for geospatial filtering.
+- Test coverage across core services
+- PostgreSQL query optimization
+- Documentation and deployment guides
 
 ---
 
 ## [0.9.0] - 2024-12-15
 ### Added
-- Initial database schema with models for `User`, `Lead`, `Transaction`, and `Subscription`.
-- FastAPI application setup with OpenAPI documentation.
-- CI/CD pipelines using GitHub Actions for testing and deployment.
-
-### Updated
-- Implemented Dockerfile and `docker-compose.yml` for containerized deployment.
-- Integrated Prometheus and Grafana for monitoring and alerting.
+- Initial database schema
+- FastAPI application setup
+- CI/CD pipelines
+- Containerized deployment
+- Monitoring integration
 
 ---
 
 ## [0.8.0] - 2024-11-30
 ### Added
-- Scraping framework with modular scrapers for different platforms.
-- Redis integration for caching and session management.
-- Basic recommendation engine using rule-based logic.
+- Scraping framework
+- Redis integration
+- Basic recommendation engine
 
 ---
