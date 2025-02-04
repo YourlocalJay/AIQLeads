@@ -1,179 +1,143 @@
-"""
-AI-enhanced circuit breaker implementation with dynamic failure detection
-and intelligent recovery strategies.
-"""
-from typing import Optional, Dict, List, Tuple, Callable, Any
-from dataclasses import dataclass
+from typing import Callable, Optional, Dict, List
 from datetime import datetime, timedelta
-import asyncio
-import logging
-import json
-import sqlite3
-from enum import Enum
-from collections import deque
 import threading
-import numpy as np
-from functools import wraps
+from dataclasses import dataclass
+import sqlite3
+from collections import deque
 
-logger = logging.getLogger(__name__)
+@dataclass
+class FailureEvent:
+    timestamp: datetime
+    error_type: str
+    context: Dict
+    severity: float
 
-[Previous code remains the same until AICircuitRegistry class...]
+class AICircuitBreaker:
+    def __init__(self, 
+                 failure_threshold: int = 5,
+                 recovery_timeout: int = 60,
+                 half_open_timeout: int = 30):
+        self._failure_threshold = failure_threshold
+        self._recovery_timeout = recovery_timeout
+        self._half_open_timeout = half_open_timeout
+        self._state = "CLOSED"
+        self._last_failure_time = None
+        self._failure_count = 0
+        self._lock = threading.Lock()
+        self._failure_history = deque(maxlen=100)
+        self._setup_db()
 
-class AICircuitRegistry:
-    """Registry for managing multiple AI circuit breakers."""
-    
-    _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(AICircuitRegistry, cls).__new__(cls)
-        return cls._instance
-    
-    def __init__(self):
-        if not hasattr(self, 'initialized'):
-            self._circuits: Dict[str, AICircuitBreaker] = {}
-            self._lock = threading.Lock()
-            self.initialized = True
-        
-    async def get_circuit(
-        self,
-        name: str,
-        failure_threshold: float = 0.5,
-        recovery_timeout: float = 60.0,
-        **kwargs
-    ) -> AICircuitBreaker:
-        """Get or create a circuit breaker."""
-        with self._lock:
-            if name not in self._circuits:
-                self._circuits[name] = AICircuitBreaker(
-                    name=name,
-                    failure_threshold=failure_threshold,
-                    recovery_timeout=recovery_timeout,
-                    **kwargs
-                )
-            return self._circuits[name]
-            
-    async def reset_all(self):
-        """Reset all circuit breakers to closed state."""
-        with self._lock:
-            for circuit in self._circuits.values():
-                circuit._state = CircuitState.CLOSED
-                circuit.stats = AICircuitStats()
-                circuit._last_failure_time = None
-                circuit._half_open_start = None
-                circuit._save_state()
-                
-    def get_all_stats(self) -> Dict[str, Dict]:
-        """Get statistics for all circuits."""
-        with self._lock:
-            return {
-                name: {
-                    'state': circuit._state.value,
-                    'total_requests': circuit.stats.total_requests,
-                    'success_rate': circuit.stats.successful_requests / 
-                                  max(circuit.stats.total_requests, 1),
-                    'region_stats': circuit.stats.region_stats,
-                    'priority_stats': circuit.stats.priority_stats
-                }
-                for name, circuit in self._circuits.items()
-            }
-            
-    def remove_circuit(self, name: str):
-        """Remove a circuit breaker from the registry."""
-        with self._lock:
-            if name in self._circuits:
-                del self._circuits[name]
-
-# Global registry instance
-registry = AICircuitRegistry()
-
-def ai_circuit_protected(
-    circuit_name: str,
-    priority_level: int = 0,
-    failure_threshold: float = 0.5,
-    recovery_timeout: float = 60.0
-):
-    """
-    Decorator for protecting functions with AI circuit breaker.
-    
-    Args:
-        circuit_name: Name of the circuit breaker
-        priority_level: Priority level of the protected operation (0-10)
-        failure_threshold: Failure rate threshold for tripping circuit
-        recovery_timeout: Base recovery timeout in seconds
-    """
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            circuit = await registry.get_circuit(
-                circuit_name,
-                failure_threshold=failure_threshold,
-                recovery_timeout=recovery_timeout
+    def _setup_db(self):
+        self._conn = sqlite3.connect('circuit_breaker.db', check_same_thread=False)
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS failure_patterns (
+                error_type TEXT,
+                context_pattern TEXT,
+                severity REAL,
+                frequency INTEGER,
+                PRIMARY KEY (error_type, context_pattern)
             )
-            
-            if not circuit.allow_request(priority_level):
-                raise CircuitBreakerError(
-                    f"Circuit {circuit_name} is open"
-                )
-            
-            start_time = datetime.now()
-            retry_count = 0
-            error = None
-            
-            try:
-                while retry_count < 3:  # Max 3 retries
-                    try:
-                        result = await func(*args, **kwargs)
-                        response_time = (datetime.now() - start_time).total_seconds()
-                        
-                        # Extract region and lead_id from kwargs if available
-                        region = kwargs.get('region')
-                        lead_id = kwargs.get('lead_id')
-                        
-                        await circuit.on_success(
-                            response_time,
-                            region=region,
-                            priority=priority_level
-                        )
-                        return result
-                        
-                    except Exception as e:
-                        error = e
-                        retry_count += 1
-                        if retry_count < 3:
-                            # Exponential backoff with jitter
-                            delay = (2 ** retry_count) + random.uniform(0, 1)
-                            await asyncio.sleep(delay)
-                        
-                # If we get here, all retries failed
-                response_time = (datetime.now() - start_time).total_seconds()
-                await circuit.on_failure(
-                    error=error,
-                    response_time=response_time,
-                    retry_count=retry_count,
-                    priority_level=priority_level,
-                    region=kwargs.get('region'),
-                    lead_id=kwargs.get('lead_id'),
-                    model_version=kwargs.get('model_version')
-                )
-                raise error
-                
-            except Exception as e:
-                response_time = (datetime.now() - start_time).total_seconds()
-                await circuit.on_failure(
-                    error=e,
-                    response_time=response_time,
-                    retry_count=retry_count,
-                    priority_level=priority_level,
-                    region=kwargs.get('region'),
-                    lead_id=kwargs.get('lead_id'),
-                    model_version=kwargs.get('model_version')
-                )
-                raise
-                
-        return wrapper
-    return decorator
+        """)
 
-class CircuitBreakerError(Exception):
-    """Exception raised when circuit breaker prevents operation."""
-    pass
+    def __call__(self, func: Callable) -> Callable:
+        def wrapper(*args, **kwargs):
+            with self._lock:
+                if not self._can_execute():
+                    raise Exception("Circuit breaker is OPEN")
+                
+                try:
+                    result = func(*args, **kwargs)
+                    self._handle_success()
+                    return result
+                except Exception as e:
+                    self._handle_failure(e, {"args": args, "kwargs": kwargs})
+                    raise
+        return wrapper
+
+    def _can_execute(self) -> bool:
+        if self._state == "CLOSED":
+            return True
+
+        if self._state == "OPEN":
+            if (datetime.now() - self._last_failure_time > 
+                timedelta(seconds=self._recovery_timeout)):
+                self._state = "HALF_OPEN"
+                return True
+            return False
+
+        # HALF_OPEN state
+        if datetime.now() - self._last_failure_time > 
+           timedelta(seconds=self._half_open_timeout):
+            self._state = "CLOSED"
+            return True
+        return True
+
+    def _handle_success(self):
+        if self._state == "HALF_OPEN":
+            self._state = "CLOSED"
+        self._failure_count = 0
+
+    def _handle_failure(self, error: Exception, context: Dict):
+        self._last_failure_time = datetime.now()
+        error_type = type(error).__name__
+        
+        # Calculate severity based on historical patterns
+        severity = self._calculate_severity(error_type, context)
+        
+        # Record failure event
+        event = FailureEvent(
+            timestamp=self._last_failure_time,
+            error_type=error_type,
+            context=context,
+            severity=severity
+        )
+        self._failure_history.append(event)
+        
+        # Update failure patterns in database
+        self._update_failure_patterns(event)
+        
+        # Adjust failure count based on severity
+        self._failure_count += severity
+        
+        if self._failure_count >= self._failure_threshold:
+            self._state = "OPEN"
+
+    def _calculate_severity(self, error_type: str, context: Dict) -> float:
+        # Query historical patterns
+        cursor = self._conn.execute(
+            "SELECT severity, frequency FROM failure_patterns WHERE error_type = ?",
+            (error_type,)
+        )
+        patterns = cursor.fetchall()
+        
+        if not patterns:
+            return 1.0
+        
+        # Calculate weighted severity
+        total_freq = sum(freq for _, freq in patterns)
+        weighted_severity = sum(sev * freq for sev, freq in patterns) / total_freq
+        
+        return max(0.1, min(2.0, weighted_severity))
+
+    def _update_failure_patterns(self, event: FailureEvent):
+        self._conn.execute("""
+            INSERT INTO failure_patterns (error_type, context_pattern, severity, frequency)
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT (error_type, context_pattern) DO UPDATE
+            SET frequency = frequency + 1,
+                severity = (severity + ?) / 2
+        """, (event.error_type, str(event.context), event.severity, event.severity))
+        self._conn.commit()
+
+    def get_state(self) -> str:
+        return self._state
+
+    def reset(self):
+        with self._lock:
+            self._state = "CLOSED"
+            self._failure_count = 0
+            self._last_failure_time = None
+            self._failure_history.clear()
+
+    def __del__(self):
+        self._conn.close()
