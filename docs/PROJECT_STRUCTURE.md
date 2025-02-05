@@ -1,5 +1,4 @@
 # AIQLeads Project Structure
-
 ```
 AIQLeads/
 │
@@ -68,9 +67,52 @@ AIQLeads/
 │   └── settings.py
 │
 ├── tests/
-│   ├── test_routes.py
-│   ├── test_scrapers.py
-│   └── test_ai.py
+│   ├── backend/
+│   │   ├── api/
+│   │   │   ├── routes/
+│   │   │   │   ├── test_auth.py
+│   │   │   │   ├── test_leads.py
+│   │   │   │   ├── test_users.py
+│   │   │   │   └── test_pricing.py
+│   │   │   ├── middlewares/
+│   │   │   │   ├── test_auth_middleware.py
+│   │   │   │   └── test_rate_limiter.py
+│   │   │   └── schemas/
+│   │   │       ├── test_lead_schema.py
+│   │   │       ├── test_user_schema.py
+│   │   │       └── test_pricing_schema.py
+│   │   │
+│   │   ├── scrapers/
+│   │   │   ├── test_zillow_scraper.py
+│   │   │   ├── test_craigslist_scraper.py
+│   │   │   └── test_mls_scraper.py
+│   │   │
+│   │   ├── ai/
+│   │   │   ├── test_lead_scoring.py
+│   │   │   ├── test_chatbot_nlp.py
+│   │   │   └── test_recommendations.py
+│   │   │
+│   │   └── database/
+│   │       ├── test_db_connection.py
+│   │       └── test_models.py
+│   │
+│   ├── frontend/
+│   │   ├── components/
+│   │   │   ├── test_lead_list.py
+│   │   │   ├── test_lead_details.py
+│   │   │   ├── test_chatbot.py
+│   │   │   ├── test_dashboard.py
+│   │   │   ├── test_home.py
+│   │   │   ├── test_search.py
+│   │   │   └── test_pricing.py
+│   │   │
+│   │   └── services/
+│   │       ├── test_api_client.py
+│   │       └── test_auth.py
+│   │
+│   └── config/
+│       ├── test_config.py
+│       └── test_settings.py
 │
 ├── scripts/
 │   ├── data_migration.py
@@ -87,6 +129,13 @@ AIQLeads/
 - **Frontend**: React components, services, and styles
 - **Infrastructure**: CI/CD, monitoring, and deployment configurations
 - **Configuration**: Project settings and environment configs
-- **Testing**: Comprehensive test suite
+- **Testing**: Comprehensive test suite with mirrored directory structure
 - **Scripts**: Utility scripts for data management
 - **Documentation**: Project and API documentation
+
+## Testing Strategy
+The test directory now mirrors the project's structure, ensuring:
+- Each module has a corresponding test file
+- Tests are organized in the same hierarchy as the source code
+- Easy navigation and maintenance of test cases
+- Clear mapping between source code and its tests
