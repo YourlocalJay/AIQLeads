@@ -1,6 +1,7 @@
 """
 MVP Configuration for AIQLeads
 """
+
 from typing import Dict, Any
 import os
 
@@ -38,14 +39,14 @@ SCORING_WEIGHTS: Dict[str, float] = {
     "property_value": 0.3,
     "location_score": 0.3,
     "market_trend": 0.2,
-    "listing_age": 0.2
+    "listing_age": 0.2,
 }
 
 # Cache Configuration
 CACHE_CONFIG: Dict[str, Any] = {
     "lead_scores": {"ttl": 3600},
     "market_data": {"ttl": 7200},
-    "property_details": {"ttl": 86400}
+    "property_details": {"ttl": 86400},
 }
 
 # Feature Flags
@@ -53,5 +54,5 @@ FEATURES = {
     "websocket": False,  # Defer WebSocket implementation
     "advanced_analytics": False,  # Basic analytics only
     "multi_region": False,  # Single region for MVP
-    "economic_indicators": False  # Basic market data only
+    "economic_indicators": False,  # Basic market data only
 }

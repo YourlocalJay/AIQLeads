@@ -1,7 +1,7 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Optional, Dict, Any
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 import signal
 import json
@@ -11,6 +11,7 @@ import backoff
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class RateLimitState:
     requests_per_minute: int
@@ -18,17 +19,16 @@ class RateLimitState:
     request_times: Dict[str, list[datetime]]
     circuit_breaker_trips: int = 0
     last_error_time: Optional[datetime] = None
-    
+
     def to_json(self) -> str:
         data = asdict(self)
         data["request_times"] = {
-            k: [t.isoformat() for t in v]
-            for k, v in self.request_times.items()
+            k: [t.isoformat() for t in v] for k, v in self.request_times.items()
         }
         if self.last_error_time:
             data["last_error_time"] = self.last_error_time.isoformat()
         return json.dumps(data)
-    
+
     @classmethod
     def from_json(cls, data: str) -> "RateLimitState":
         parsed = json.loads(data)
@@ -37,8 +37,11 @@ class RateLimitState:
             for k, v in parsed["request_times"].items()
         }
         if parsed.get("last_error_time"):
-            parsed["last_error_time"] = datetime.fromisoformat(parsed["last_error_time"])
+            parsed["last_error_time"] = datetime.fromisoformat(
+                parsed["last_error_time"]
+            )
         return cls(**parsed)
+
 
 class BaseRateLimiter(ABC):
     def __init__(
@@ -48,7 +51,7 @@ class BaseRateLimiter(ABC):
         redis_url: Optional[str] = None,
         redis_failover_urls: Optional[list[str]] = None,
         circuit_breaker_threshold: int = 5,
-        circuit_breaker_timeout: int = 60
+        circuit_breaker_timeout: int = 60,
     ):
         self.requests_per_minute = requests_per_minute
         self.burst_limit = burst_limit or requests_per_minute
@@ -63,12 +66,12 @@ class BaseRateLimiter(ABC):
             "trips": 0,
             "threshold": circuit_breaker_threshold,
             "timeout": circuit_breaker_timeout,
-            "last_error": None
+            "last_error": None,
         }
-        
+
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, self._signal_handler)
-    
+
     async def initialize(self):
         if self._redis_url:
             await self._connect_redis()
@@ -79,22 +82,16 @@ class BaseRateLimiter(ABC):
                 self._request_times = state.request_times
                 self._circuit_breaker["trips"] = state.circuit_breaker_trips
                 self._circuit_breaker["last_error"] = state.last_error_time
-                
+
         self._cleanup_task = asyncio.create_task(self._start_periodic_cleanup())
-    
-    @backoff.on_exception(
-        backoff.expo,
-        aioredis.RedisError,
-        max_tries=3
-    )
+
+    @backoff.on_exception(backoff.expo, aioredis.RedisError, max_tries=3)
     async def _connect_redis(self):
         if not self._redis or not await self._redis.ping():
             for url in [self._redis_url] + self._redis_failover_urls:
                 try:
                     self._redis = await aioredis.from_url(
-                        url,
-                        max_connections=10,
-                        socket_timeout=5.0
+                        url, max_connections=10, socket_timeout=5.0
                     )
                     if await self._redis.ping():
                         logger.info(f"Connected to Redis at {url}")
@@ -103,7 +100,7 @@ class BaseRateLimiter(ABC):
                     continue
             else:
                 raise aioredis.RedisError("Failed to connect to any Redis instance")
-    
+
     async def shutdown(self):
         self._shutdown_event.set()
         if self._cleanup_task:
@@ -111,23 +108,23 @@ class BaseRateLimiter(ABC):
         if self._redis:
             await self._save_state()
             await self._redis.close()
-    
+
     async def _save_state(self):
         if not self._redis:
             return
-            
+
         state = RateLimitState(
             requests_per_minute=self.requests_per_minute,
             burst_limit=self.burst_limit,
             request_times=self._request_times,
             circuit_breaker_trips=self._circuit_breaker["trips"],
-            last_error_time=self._circuit_breaker["last_error"]
+            last_error_time=self._circuit_breaker["last_error"],
         )
         async with self._redis.pipeline() as pipe:
             await pipe.set("rate_limiter_state", state.to_json())
             await pipe.expire("rate_limiter_state", 3600)
             await pipe.execute()
-    
+
     async def acquire(self, endpoint: str, max_retries: int = 3) -> bool:
         if self._is_circuit_open():
             return False
@@ -137,17 +134,17 @@ class BaseRateLimiter(ABC):
                 current_requests = len(self._request_times.get(endpoint, []))
                 if current_requests >= self.burst_limit:
                     return False
-                    
+
                 self._request_times.setdefault(endpoint, []).append(datetime.now())
                 if self._redis:
                     await self._save_state()
                 return True
-                    
+
         except Exception as e:
             self._record_error()
             logger.error(f"Error acquiring rate limit: {e}")
             return False
-    
+
     def _is_circuit_open(self) -> bool:
         if self._circuit_breaker["trips"] >= self._circuit_breaker["threshold"]:
             if self._circuit_breaker["last_error"]:
@@ -171,5 +168,5 @@ class BaseRateLimiter(ABC):
                 "current_requests": current_requests,
                 "remaining": self.burst_limit - current_requests,
                 "circuit_breaker_trips": self._circuit_breaker["trips"],
-                "circuit_status": "open" if self._is_circuit_open() else "closed"
+                "circuit_status": "open" if self._is_circuit_open() else "closed",
             }

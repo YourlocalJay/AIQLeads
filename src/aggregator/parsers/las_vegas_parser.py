@@ -9,6 +9,7 @@ from src.models.lead_model import Lead
 from src.aggregator.parsers.base_parser import BaseParser
 from src.aggregator.exceptions import ParseError
 
+
 class LasVegasParser(BaseParser):
     """
     Parser for Las Vegas real estate listings with advanced fraud detection,
@@ -20,8 +21,10 @@ class LasVegasParser(BaseParser):
 
     def __init__(self):
         super().__init__()
-        self.price_pattern = re.compile(r'\$?([\d,]+(?:\.\d{2})?)')
-        self.location_pattern = re.compile(r'Las Vegas|Henderson|North Las Vegas|Summerlin', re.IGNORECASE)
+        self.price_pattern = re.compile(r"\$?([\d,]+(?:\.\d{2})?)")
+        self.location_pattern = re.compile(
+            r"Las Vegas|Henderson|North Las Vegas|Summerlin", re.IGNORECASE
+        )
 
     async def parse(self, content: str) -> List[Dict[str, Any]]:
         """
@@ -37,7 +40,7 @@ class LasVegasParser(BaseParser):
             ParseError: If required fields are missing or invalid.
         """
         try:
-            soup = BeautifulSoup(content, 'html.parser')
+            soup = BeautifulSoup(content, "html.parser")
             listings = []
 
             for item in soup.select(".listing-item"):
@@ -49,7 +52,7 @@ class LasVegasParser(BaseParser):
                         "geospatial_data": self._validate_geospatial_data(item),
                         "description": self._extract_description(item),
                         "contact": self._extract_contact(item),
-                        "metadata": self._build_metadata()
+                        "metadata": self._build_metadata(),
                     }
                     # Validate and append only if valid
                     if self.validate(listing):
@@ -79,7 +82,7 @@ class LasVegasParser(BaseParser):
         if not match:
             return None
 
-        return float(match.group(1).replace(',', ''))
+        return float(match.group(1).replace(",", ""))
 
     def _extract_location(self, soup: BeautifulSoup) -> str:
         """Extract and validate the location."""
@@ -111,7 +114,11 @@ class LasVegasParser(BaseParser):
     def _extract_description(self, soup: BeautifulSoup) -> str:
         """Extract the description of the listing."""
         description_elem = soup.select_one(".listing-description")
-        return description_elem.text.strip() if description_elem else "No description provided."
+        return (
+            description_elem.text.strip()
+            if description_elem
+            else "No description provided."
+        )
 
     def _extract_contact(self, soup: BeautifulSoup) -> Dict[str, str]:
         """Extract contact information from the listing."""
@@ -119,11 +126,11 @@ class LasVegasParser(BaseParser):
 
         email_elem = soup.select_one(".contact-email")
         if email_elem:
-            contact['email'] = email_elem.text.strip()
+            contact["email"] = email_elem.text.strip()
 
         phone_elem = soup.select_one(".contact-phone")
         if phone_elem:
-            contact['phone'] = phone_elem.text.strip()
+            contact["phone"] = phone_elem.text.strip()
 
         if not contact:
             raise ParseError("No contact information available")
@@ -135,7 +142,7 @@ class LasVegasParser(BaseParser):
         return {
             "market": self.MARKET_ID,
             "version": self.VERSION,
-            "extracted_at": datetime.utcnow().isoformat()
+            "extracted_at": datetime.utcnow().isoformat(),
         }
 
     def validate(self, data: Dict[str, Any]) -> bool:
@@ -154,16 +161,21 @@ class LasVegasParser(BaseParser):
             with db.get_session() as session:
                 for listing in listings:
                     lead = Lead(
-                        title=listing['title'],
-                        price=listing['price'],
-                        location=WKTElement(f"POINT({listing['geospatial_data']['longitude']} {listing['geospatial_data']['latitude']})", srid=4326),
-                        description=listing['description'],
-                        contact=listing['contact'],
-                        metadata=listing['metadata']
+                        title=listing["title"],
+                        price=listing["price"],
+                        location=WKTElement(
+                            f"POINT({listing['geospatial_data']['longitude']} {listing['geospatial_data']['latitude']})",
+                            srid=4326,
+                        ),
+                        description=listing["description"],
+                        contact=listing["contact"],
+                        metadata=listing["metadata"],
                     )
                     session.add(lead)
                 session.commit()
-            self.logger.info(f"Successfully stored {len(listings)} listings to the database.")
+            self.logger.info(
+                f"Successfully stored {len(listings)} listings to the database."
+            )
         except SQLAlchemyError as e:
             self.logger.error(f"Database storage failed: {e}")
             raise

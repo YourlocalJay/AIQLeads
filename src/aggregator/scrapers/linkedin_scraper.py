@@ -1,7 +1,6 @@
 from src.aggregator.base_scraper import BaseScraper
 from src.schemas.lead_schema import LeadCreate
 from src.aggregator.exceptions import ScraperError, ParseError, NetworkError
-from src.aggregator.rate_limiter import RateLimiter
 from typing import List, Dict, Optional, Any
 import asyncio
 import logging
@@ -9,6 +8,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
+
 
 class LinkedInScraper(BaseScraper):
     """
@@ -23,10 +23,10 @@ class LinkedInScraper(BaseScraper):
     BATCH_SIZE = 25  # listings per request
 
     def __init__(
-        self, 
-        rate_limit: int = 30, 
+        self,
+        rate_limit: int = 30,
         time_window: int = RATE_LIMIT_WINDOW,
-        api_key: Optional[str] = None
+        api_key: Optional[str] = None,
     ):
         """
         Initialize LinkedIn scraper with configurable parameters.
@@ -43,11 +43,11 @@ class LinkedInScraper(BaseScraper):
         self._cache_ttl = timedelta(minutes=15)
 
     async def search(
-        self, 
-        location: str, 
-        radius_km: float = 50.0, 
+        self,
+        location: str,
+        radius_km: float = 50.0,
         batch_size: int = BATCH_SIZE,
-        **kwargs
+        **kwargs,
     ) -> List[LeadCreate]:
         """
         Search for real estate leads on LinkedIn with enhanced features.
@@ -66,8 +66,10 @@ class LinkedInScraper(BaseScraper):
             NetworkError: On network issues
         """
         try:
-            logger.info(f"Starting LinkedIn search: location={location}, radius={radius_km}km")
-            
+            logger.info(
+                f"Starting LinkedIn search: location={location}, radius={radius_km}km"
+            )
+
             # Check cache first
             cache_key = f"{location}:{radius_km}"
             if cached_results := self._get_from_cache(cache_key):
@@ -75,19 +77,21 @@ class LinkedInScraper(BaseScraper):
                 return cached_results
 
             await self.rate_limiter.acquire()
-            
+
             leads = []
             retry_count = 0
-            
+
             while retry_count < self.MAX_RETRIES:
                 try:
-                    raw_listings = await self._fetch_listings(location, radius_km, batch_size)
+                    raw_listings = await self._fetch_listings(
+                        location, radius_km, batch_size
+                    )
                     parsed_leads = await self._process_listings(raw_listings)
                     leads.extend(parsed_leads)
-                    
+
                     # Store in cache
                     self._add_to_cache(cache_key, leads)
-                    
+
                     await self.log_scrape_activity(len(leads))
                     logger.info(f"Successfully extracted {len(leads)} leads")
                     return leads
@@ -96,15 +100,21 @@ class LinkedInScraper(BaseScraper):
                     retry_count += 1
                     if retry_count >= self.MAX_RETRIES:
                         raise
-                    logger.warning(f"Retry {retry_count}/{self.MAX_RETRIES} after error: {e}")
+                    logger.warning(
+                        f"Retry {retry_count}/{self.MAX_RETRIES} after error: {e}"
+                    )
                     await asyncio.sleep(self.RETRY_DELAY * retry_count)
 
         except Exception as e:
-            self.add_error("search_error", str(e), {
-                "location": location,
-                "radius_km": radius_km,
-                "timestamp": datetime.utcnow()
-            })
+            self.add_error(
+                "search_error",
+                str(e),
+                {
+                    "location": location,
+                    "radius_km": radius_km,
+                    "timestamp": datetime.utcnow(),
+                },
+            )
             logger.error(f"LinkedIn search failed: {str(e)}", exc_info=True)
             raise ScraperError(f"LinkedIn search failed: {str(e)}")
 
@@ -132,7 +142,9 @@ class LinkedInScraper(BaseScraper):
                     raise ScraperError(f"Credential validation failed: {str(e)}")
                 await asyncio.sleep(self.RETRY_DELAY * retry_count)
 
-    async def extract_contact_info(self, listing_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def extract_contact_info(
+        self, listing_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Extract and validate contact information with enhanced validation.
 
@@ -153,7 +165,7 @@ class LinkedInScraper(BaseScraper):
                 "linkedin_url": listing_data.get("profile_url"),
                 "company": listing_data.get("company_name"),
                 "title": listing_data.get("title"),
-                "extracted_at": datetime.utcnow()
+                "extracted_at": datetime.utcnow(),
             }
 
             if not contact_info["email"] and not contact_info["phone"]:
@@ -173,10 +185,7 @@ class LinkedInScraper(BaseScraper):
             raise ParseError(f"Contact extraction failed: {str(e)}")
 
     async def _fetch_listings(
-        self, 
-        location: str, 
-        radius_km: float,
-        batch_size: int
+        self, location: str, radius_km: float, batch_size: int
     ) -> List[Dict[str, Any]]:
         """
         Fetch listings from LinkedIn API with batching support.
@@ -216,8 +225,8 @@ class LinkedInScraper(BaseScraper):
                         "linkedin_url": contact_info["linkedin_url"],
                         "company": contact_info["company"],
                         "title": contact_info["title"],
-                        "extracted_at": contact_info["extracted_at"]
-                    }
+                        "extracted_at": contact_info["extracted_at"],
+                    },
                 )
                 leads.append(lead)
             except ParseError as e:
@@ -235,10 +244,7 @@ class LinkedInScraper(BaseScraper):
 
     def _add_to_cache(self, key: str, data: List[LeadCreate]) -> None:
         """Add results to cache with timestamp."""
-        self._cache[key] = {
-            "timestamp": datetime.utcnow(),
-            "data": data
-        }
+        self._cache[key] = {"timestamp": datetime.utcnow(), "data": data}
 
     @staticmethod
     def _validate_email(email: str) -> None:

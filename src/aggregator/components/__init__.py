@@ -7,10 +7,10 @@ from .metrics import PerformanceMetricsAggregator
 from .captcha import CaptchaExtractor
 
 __all__ = [
-    'PersistentBrowserManager',
-    'RateLimiter',
-    'ProxyManager',
-    'RequestFingerprinter',
-    'PerformanceMetricsAggregator',
-    'CaptchaExtractor'
+    "PersistentBrowserManager",
+    "RateLimiter",
+    "ProxyManager",
+    "RequestFingerprinter",
+    "PerformanceMetricsAggregator",
+    "CaptchaExtractor",
 ]

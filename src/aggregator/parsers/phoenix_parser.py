@@ -1,8 +1,6 @@
 from typing import Dict, Any, List, Optional
 from bs4 import BeautifulSoup
 from geoalchemy2 import WKTElement
-from shapely.geometry import Point
-from datetime import datetime
 import logging
 from src.schemas.lead_schema import LeadCreate
 from src.aggregator.parsers.base_parser import BaseParser
@@ -10,6 +8,7 @@ from src.aggregator.exceptions import ParseError
 from src.utils.validators import validate_email, validate_phone
 
 logger = logging.getLogger(__name__)
+
 
 class PhoenixParser(BaseParser):
     """
@@ -96,9 +95,21 @@ class PhoenixParser(BaseParser):
 
     def _extract_contact_info(self, soup: BeautifulSoup) -> Dict[str, str]:
         contact = {
-            "name": soup.select_one(".contact-name").text.strip() if soup.select_one(".contact-name") else "Unknown",
-            "email": soup.select_one(".contact-email").text.strip() if soup.select_one(".contact-email") else None,
-            "phone": soup.select_one(".contact-phone").text.strip() if soup.select_one(".contact-phone") else None,
+            "name": (
+                soup.select_one(".contact-name").text.strip()
+                if soup.select_one(".contact-name")
+                else "Unknown"
+            ),
+            "email": (
+                soup.select_one(".contact-email").text.strip()
+                if soup.select_one(".contact-email")
+                else None
+            ),
+            "phone": (
+                soup.select_one(".contact-phone").text.strip()
+                if soup.select_one(".contact-phone")
+                else None
+            ),
         }
 
         if contact["email"] and not validate_email(contact["email"]):
@@ -120,11 +131,31 @@ class PhoenixParser(BaseParser):
             Dict[str, Any]: Metadata dictionary.
         """
         return {
-            "listing_date": soup.select_one(".listing-date").text.strip() if soup.select_one(".listing-date") else None,
-            "property_type": soup.select_one(".property-type").text.strip() if soup.select_one(".property-type") else None,
-            "square_footage": soup.select_one(".sqft").text.strip() if soup.select_one(".sqft") else None,
-            "bedrooms": soup.select_one(".bedrooms").text.strip() if soup.select_one(".bedrooms") else None,
-            "bathrooms": soup.select_one(".bathrooms").text.strip() if soup.select_one(".bathrooms") else None,
+            "listing_date": (
+                soup.select_one(".listing-date").text.strip()
+                if soup.select_one(".listing-date")
+                else None
+            ),
+            "property_type": (
+                soup.select_one(".property-type").text.strip()
+                if soup.select_one(".property-type")
+                else None
+            ),
+            "square_footage": (
+                soup.select_one(".sqft").text.strip()
+                if soup.select_one(".sqft")
+                else None
+            ),
+            "bedrooms": (
+                soup.select_one(".bedrooms").text.strip()
+                if soup.select_one(".bedrooms")
+                else None
+            ),
+            "bathrooms": (
+                soup.select_one(".bathrooms").text.strip()
+                if soup.select_one(".bathrooms")
+                else None
+            ),
         }
 
     def _validate_lead(self, lead: LeadCreate) -> None:

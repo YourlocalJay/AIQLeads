@@ -1,11 +1,11 @@
 import pytest
-import asyncio
 from typing import List
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from src.aggregator.scrapers import ZillowScraper, FacebookScraper
 from src.aggregator.parsers import ZillowParser, FacebookParser
 from src.models.lead import Lead
 from src.config import settings
+
 
 class TestScraperParserIntegration:
     @pytest.fixture
@@ -31,7 +31,7 @@ class TestScraperParserIntegration:
                     "streetAddress": "123 Main St",
                     "city": "San Francisco",
                     "state": "CA",
-                    "zipcode": "94105"
+                    "zipcode": "94105",
                 },
                 "price": 1200000,
                 "bedrooms": 3,
@@ -39,22 +39,21 @@ class TestScraperParserIntegration:
                 "livingArea": 2000,
                 "yearBuilt": 1985,
                 "latitude": 37.7749,
-                "longitude": -122.4194
+                "longitude": -122.4194,
             }
         ]
 
-        with patch.object(scraper, 'fetch_listings') as mock_fetch:
+        with patch.object(scraper, "fetch_listings") as mock_fetch:
             mock_fetch.return_value = mock_listings
-            
+
             # Simulate scraping
             listings = await scraper.fetch_listings(
-                location="San Francisco, CA",
-                max_price=2000000
+                location="San Francisco, CA", max_price=2000000
             )
-            
+
             # Parse scraped data
             leads: List[Lead] = [parser.parse(listing) for listing in listings]
-            
+
             assert len(leads) == 1
             lead = leads[0]
             assert isinstance(lead, Lead)
@@ -72,36 +71,29 @@ class TestScraperParserIntegration:
                     "id": "67890",
                     "location": {
                         "address": "456 Market St, San Francisco, CA 94105",
-                        "coordinates": {
-                            "latitude": 37.7749,
-                            "longitude": -122.4194
-                        }
+                        "coordinates": {"latitude": 37.7749, "longitude": -122.4194},
                     },
-                    "price": {
-                        "amount": 750000,
-                        "currency": "USD"
-                    },
+                    "price": {"amount": 750000, "currency": "USD"},
                     "propertyDetails": {
                         "bedrooms": 2,
                         "bathrooms": 1,
-                        "squareFeet": 1200
-                    }
+                        "squareFeet": 1200,
+                    },
                 }
             }
         ]
 
-        with patch.object(scraper, 'fetch_listings') as mock_fetch:
+        with patch.object(scraper, "fetch_listings") as mock_fetch:
             mock_fetch.return_value = mock_listings
-            
+
             # Simulate scraping
             listings = await scraper.fetch_listings(
-                location="San Francisco, CA",
-                max_price=1000000
+                location="San Francisco, CA", max_price=1000000
             )
-            
+
             # Parse scraped data
             leads: List[Lead] = [parser.parse(listing) for listing in listings]
-            
+
             assert len(leads) == 1
             lead = leads[0]
             assert isinstance(lead, Lead)
@@ -110,7 +102,9 @@ class TestScraperParserIntegration:
             assert lead.source == "facebook"
 
     @pytest.mark.asyncio
-    async def test_data_transformation_consistency(self, zillow_integration, facebook_integration):
+    async def test_data_transformation_consistency(
+        self, zillow_integration, facebook_integration
+    ):
         """Test data consistency across different sources"""
         zillow_scraper, zillow_parser = zillow_integration
         facebook_scraper, facebook_parser = facebook_integration
@@ -123,22 +117,29 @@ class TestScraperParserIntegration:
             "bathrooms": 2,
             "square_feet": 1800,
             "latitude": 37.7749,
-            "longitude": -122.4194
+            "longitude": -122.4194,
         }
 
         # Create source-specific mock data
         zillow_mock = self._create_zillow_mock(property_data)
         facebook_mock = self._create_facebook_mock(property_data)
 
-        with patch.object(zillow_scraper, 'fetch_listings') as zillow_mock_fetch, \
-             patch.object(facebook_scraper, 'fetch_listings') as facebook_mock_fetch:
-            
+        with patch.object(
+            zillow_scraper, "fetch_listings"
+        ) as zillow_mock_fetch, patch.object(
+            facebook_scraper, "fetch_listings"
+        ) as facebook_mock_fetch:
+
             zillow_mock_fetch.return_value = [zillow_mock]
             facebook_mock_fetch.return_value = [facebook_mock]
 
             # Process data from both sources
-            zillow_listings = await zillow_scraper.fetch_listings(location="San Francisco")
-            facebook_listings = await facebook_scraper.fetch_listings(location="San Francisco")
+            zillow_listings = await zillow_scraper.fetch_listings(
+                location="San Francisco"
+            )
+            facebook_listings = await facebook_scraper.fetch_listings(
+                location="San Francisco"
+            )
 
             zillow_lead = zillow_parser.parse(zillow_listings[0])
             facebook_lead = facebook_parser.parse(facebook_listings[0])
@@ -159,14 +160,14 @@ class TestScraperParserIntegration:
                 "streetAddress": data["address"].split(",")[0],
                 "city": "San Francisco",
                 "state": "CA",
-                "zipcode": "94110"
+                "zipcode": "94110",
             },
             "price": data["price"],
             "bedrooms": data["bedrooms"],
             "bathrooms": data["bathrooms"],
             "livingArea": data["square_feet"],
             "latitude": data["latitude"],
-            "longitude": data["longitude"]
+            "longitude": data["longitude"],
         }
 
     def _create_facebook_mock(self, data):
@@ -177,17 +178,14 @@ class TestScraperParserIntegration:
                     "address": data["address"],
                     "coordinates": {
                         "latitude": data["latitude"],
-                        "longitude": data["longitude"]
-                    }
+                        "longitude": data["longitude"],
+                    },
                 },
-                "price": {
-                    "amount": data["price"],
-                    "currency": "USD"
-                },
+                "price": {"amount": data["price"], "currency": "USD"},
                 "propertyDetails": {
                     "bedrooms": data["bedrooms"],
                     "bathrooms": data["bathrooms"],
-                    "squareFeet": data["square_feet"]
-                }
+                    "squareFeet": data["square_feet"],
+                },
             }
         }

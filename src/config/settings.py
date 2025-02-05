@@ -5,11 +5,13 @@ import logging
 from pathlib import Path
 from pydantic import BaseSettings, validator, PostgresDsn, ValidationError
 
+
 class Settings(BaseSettings):
     """
     Application settings management with environment variable configuration.
     Implements secure credential handling and environment-specific configurations.
     """
+
     # Environment Configuration
     ENV: str = "development"
     DEBUG: bool = False
@@ -50,7 +52,9 @@ class Settings(BaseSettings):
     def validate_secret_key(cls, v: Optional[str]) -> str:
         if not v or len(v) < 32:
             if os.getenv("ENV") == "production":
-                raise ValueError("SECRET_KEY must be at least 32 characters in production")
+                raise ValueError(
+                    "SECRET_KEY must be at least 32 characters in production"
+                )
             return "development_secret_key_please_change_in_production"
         return v
 
@@ -68,18 +72,18 @@ class Settings(BaseSettings):
     def assemble_db_url(cls, v: Optional[str], values: Dict[str, Any]) -> str:
         if v:
             return v
-            
+
         user = values.get("DB_USER")
         password = values.get("DB_PASSWORD")
         host = values.get("DB_HOST")
         port = values.get("DB_PORT")
         db = values.get("DB_NAME")
-        
+
         if not all([user, password, host, port, db]):
             if values.get("ENV") == "production":
                 raise ValueError("Database configuration is incomplete")
-            return f"postgresql://postgres:postgres@localhost:5432/aiqleads"
-            
+            return "postgresql://postgres:postgres@localhost:5432/aiqleads"
+
         return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
     def _setup_logging(self) -> None:
@@ -87,7 +91,7 @@ class Settings(BaseSettings):
         log_level = logging.DEBUG if self.DEBUG else logging.INFO
         logging.basicConfig(
             level=log_level,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -108,12 +112,13 @@ class Settings(BaseSettings):
             "REDIS_HOST": self.REDIS_HOST,
             "REDIS_PORT": self.REDIS_PORT,
             "ELASTICSEARCH_HOST": self.ELASTICSEARCH_HOST,
-            "ELASTICSEARCH_PORT": self.ELASTICSEARCH_PORT
+            "ELASTICSEARCH_PORT": self.ELASTICSEARCH_PORT,
         }
 
     class Config:
         env_file = ".env"
         case_sensitive = True
+
 
 @lru_cache()
 def get_settings() -> Settings:

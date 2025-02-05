@@ -2,7 +2,7 @@
 Facebook Marketplace parser with enhanced validation and optimization.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime
 import logging
 from geoalchemy2.elements import WKTElement
@@ -14,6 +14,7 @@ from src.utils.optimization import ResultCache, cache_parser_result
 
 logger = logging.getLogger(__name__)
 
+
 class FacebookParser(BaseParser):
     """
     Optimized parser for Facebook Marketplace listings with enhanced
@@ -22,7 +23,7 @@ class FacebookParser(BaseParser):
 
     MARKET_ID = "facebook"
     VERSION = "2.1"
-    
+
     def __init__(self):
         super().__init__()
         self.result_cache = ResultCache(ttl_seconds=1800)  # 30-minute cache
@@ -50,11 +51,11 @@ class FacebookParser(BaseParser):
             if cached_result:
                 return cached_result
 
-            listing_id = data.get('id')
+            listing_id = data.get("id")
             contact = await self._extract_contact_info(data)
             location = self._extract_location(data)
             price = self._extract_price(data)
-            
+
             # Enhanced metadata extraction
             metadata = {
                 "title": data.get("title"),
@@ -68,7 +69,7 @@ class FacebookParser(BaseParser):
                 "extracted_at": datetime.utcnow().isoformat(),
                 "parser_version": self.VERSION,
                 "engagement_metrics": self._extract_engagement_metrics(data),
-                "seller_rating": await self._get_seller_rating(data)
+                "seller_rating": await self._get_seller_rating(data),
             }
 
             lead = LeadCreate(
@@ -79,7 +80,7 @@ class FacebookParser(BaseParser):
                 phone=contact.get("phone"),
                 company_name=contact.get("company_name"),
                 location=location,
-                metadata=metadata
+                metadata=metadata,
             )
 
             await self._validate_lead(lead)
@@ -87,61 +88,65 @@ class FacebookParser(BaseParser):
             return lead
 
         except Exception as e:
-            logger.error(f"Failed to parse Facebook listing {data.get('id')}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to parse Facebook listing {data.get('id')}: {e}", exc_info=True
+            )
             raise ParseError(f"Failed to parse Facebook listing: {str(e)}")
 
     async def _extract_contact_info(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and validate contact information."""
-        seller_data = data.get('seller', {})
+        seller_data = data.get("seller", {})
         contact = {
-            'name': seller_data.get('name'),
-            'email': seller_data.get('email'),
-            'phone': seller_data.get('phone'),
-            'company_name': seller_data.get('business_name')
+            "name": seller_data.get("name"),
+            "email": seller_data.get("email"),
+            "phone": seller_data.get("phone"),
+            "company_name": seller_data.get("business_name"),
         }
 
         # Enhanced validation
-        if contact['email']:
-            contact['email'] = contact['email'].lower()
-            if not validate_email(contact['email']):
-                contact['email'] = None
+        if contact["email"]:
+            contact["email"] = contact["email"].lower()
+            if not validate_email(contact["email"]):
+                contact["email"] = None
 
-        if contact['phone']:
-            if not validate_phone(contact['phone']):
-                contact['phone'] = None
+        if contact["phone"]:
+            if not validate_phone(contact["phone"]):
+                contact["phone"] = None
 
-        if not (contact['email'] or contact['phone']):
+        if not (contact["email"] or contact["phone"]):
             alternative_contact = await self._extract_alternative_contact(data)
             contact.update(alternative_contact)
 
         return contact
 
-    async def _extract_alternative_contact(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _extract_alternative_contact(
+        self, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Extract alternative contact methods from listing description."""
-        contact = {'email': None, 'phone': None}
-        description = data.get('description', '')
-        
+        contact = {"email": None, "phone": None}
+        description = data.get("description", "")
+
         # Implement advanced contact extraction
         # Add implementation
-        
+
         return contact
 
     def _extract_location(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and validate location data."""
         try:
-            location_data = data.get('location', {})
-            lat = location_data.get('latitude')
-            lon = location_data.get('longitude')
+            location_data = data.get("location", {})
+            lat = location_data.get("latitude")
+            lon = location_data.get("longitude")
 
             if not (lat and lon):
                 raise ValueError("Missing coordinates")
 
             return {
                 "coordinates": WKTElement(f"POINT({lon} {lat})", srid=4326),
-                "city": location_data.get('city'),
-                "state": location_data.get('state'),
-                "postal_code": location_data.get('postal_code'),
-                "raw_data": location_data
+                "city": location_data.get("city"),
+                "state": location_data.get("state"),
+                "postal_code": location_data.get("postal_code"),
+                "raw_data": location_data,
             }
 
         except Exception as e:
@@ -151,16 +156,16 @@ class FacebookParser(BaseParser):
     def _extract_price(self, data: Dict[str, Any]) -> Optional[float]:
         """Extract and validate price."""
         try:
-            price_data = data.get('price', {})
-            amount = price_data.get('amount')
-            currency = price_data.get('currency', 'USD')
-            
+            price_data = data.get("price", {})
+            amount = price_data.get("amount")
+            currency = price_data.get("currency", "USD")
+
             if not amount:
                 return None
-                
+
             # Implement currency conversion if needed
             return validate_price(amount)
-            
+
         except (ValueError, TypeError) as e:
             logger.warning(f"Price extraction failed: {e}")
             return None
@@ -171,18 +176,20 @@ class FacebookParser(BaseParser):
             "views": data.get("view_count", 0),
             "saves": data.get("save_count", 0),
             "shares": data.get("share_count", 0),
-            "messages": data.get("message_count", 0)
+            "messages": data.get("message_count", 0),
         }
 
-    async def _get_seller_rating(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def _get_seller_rating(
+        self, data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Retrieve and analyze seller rating data."""
-        seller_id = data.get('seller', {}).get('id')
+        seller_id = data.get("seller", {}).get("id")
         if not seller_id:
             return None
 
         # Implement seller rating retrieval
         # Add implementation
-        
+
         return None
 
     async def _calculate_fraud_score(self, data: Dict[str, Any]) -> float:
@@ -198,19 +205,21 @@ class FacebookParser(BaseParser):
                 score += 15.0
 
         # Account analysis
-        seller_data = data.get('seller', {})
+        seller_data = data.get("seller", {})
         if seller_data:
-            account_age_days = self._calculate_account_age(seller_data.get('created_time'))
+            account_age_days = self._calculate_account_age(
+                seller_data.get("created_time")
+            )
             if account_age_days < 30:
                 score += 20.0
 
         # Engagement analysis
         engagement = self._extract_engagement_metrics(data)
-        if engagement['views'] == 0 and data.get('created_time'):
+        if engagement["views"] == 0 and data.get("created_time"):
             score += 10.0
 
         # Location verification
-        if not data.get('location', {}).get('latitude'):
+        if not data.get("location", {}).get("latitude"):
             score += 15.0
 
         return min(score, 100.0)
@@ -219,9 +228,9 @@ class FacebookParser(BaseParser):
         """Calculate account age in days."""
         if not created_time:
             return None
-            
+
         try:
-            created_date = datetime.fromisoformat(created_time.replace('Z', '+00:00'))
+            created_date = datetime.fromisoformat(created_time.replace("Z", "+00:00"))
             age = datetime.utcnow() - created_date
             return age.days
         except ValueError:
@@ -235,7 +244,7 @@ class FacebookParser(BaseParser):
         if not lead.location:
             raise ParseError("Invalid location data")
 
-        if lead.metadata.get('fraud_score', 0) > 80:
+        if lead.metadata.get("fraud_score", 0) > 80:
             raise ParseError("Lead failed fraud detection")
 
         if not lead.email and not lead.phone:

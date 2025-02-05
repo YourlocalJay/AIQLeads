@@ -1,23 +1,26 @@
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, EmailStr, HttpUrl, constr, validator, Field, confloat
-from enum import Enum
 from src.models.lead_model import LeadStatus
+
 
 class CoordinatePoint(BaseModel):
     """Schema for geographical coordinates"""
+
     longitude: confloat(ge=-180, le=180)
     latitude: confloat(ge=-90, le=90)
     accuracy: Optional[float] = Field(None, ge=0, le=1)
 
-    @validator('accuracy')
+    @validator("accuracy")
     def validate_accuracy(cls, v):
         if v is not None and not (0 <= v <= 1):
-            raise ValueError('Accuracy must be between 0 and 1')
+            raise ValueError("Accuracy must be between 0 and 1")
         return v
+
 
 class LeadBase(BaseModel):
     """Base schema with common lead attributes"""
+
     company_name: constr(min_length=1, max_length=200)
     contact_name: Optional[str] = None
     contact_title: Optional[str] = None
@@ -35,23 +38,30 @@ class LeadBase(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     notes: Optional[str] = Field(None, max_length=1000)
 
-    @validator('phone')
+    @validator("phone")
     def validate_phone(cls, v):
         if v is not None:
             import re
-            phone_pattern = re.compile(r'^\+\d{1,3}[-]?\d{3}[-]?\d{3}[-]?\d{4}$')
+
+            phone_pattern = re.compile(r"^\+\d{1,3}[-]?\d{3}[-]?\d{3}[-]?\d{4}$")
             if not phone_pattern.match(v):
-                raise ValueError('Invalid phone number format. Expected format: +1-234-567-8900')
+                raise ValueError(
+                    "Invalid phone number format. Expected format: +1-234-567-8900"
+                )
         return v
+
 
 class LeadCreate(LeadBase):
     """Schema for creating new leads"""
+
     owner_id: int = Field(..., gt=0)
     location: Optional[CoordinatePoint] = None
     status: LeadStatus = Field(default=LeadStatus.NEW)
 
+
 class LeadUpdate(BaseModel):
     """Schema for updating leads"""
+
     company_name: Optional[str] = None
     contact_name: Optional[str] = None
     contact_title: Optional[str] = None
@@ -64,8 +74,10 @@ class LeadUpdate(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
 
+
 class LeadInDB(LeadBase):
     """Schema for lead data as stored in database"""
+
     id: int
     owner_id: int
     status: LeadStatus
@@ -79,8 +91,10 @@ class LeadInDB(LeadBase):
     class Config:
         orm_mode = True
 
+
 class LeadResponse(LeadInDB):
     """Schema for lead data in API responses"""
+
     distance: Optional[float] = None  # Distance in meters when requested
 
     class Config:
@@ -107,14 +121,11 @@ class LeadResponse(LeadInDB):
                 "status": "qualified",
                 "score": 0.85,
                 "is_active": True,
-                "metadata": {
-                    "source": "LinkedIn",
-                    "campaign_id": "Q1-2024"
-                },
+                "metadata": {"source": "LinkedIn", "campaign_id": "Q1-2024"},
                 "notes": "Interested in enterprise solution",
                 "created_at": "2024-01-21T00:00:00",
                 "updated_at": "2024-01-21T00:00:00",
                 "last_contact": "2024-01-21T00:00:00",
-                "distance": 1234.56
+                "distance": 1234.56,
             }
         }

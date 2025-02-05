@@ -1,12 +1,12 @@
 from src.aggregator.base_scraper import BaseScraper
 from src.schemas.lead_schema import LeadCreate
 from src.aggregator.exceptions import ScraperError, ParseError
-from src.aggregator.rate_limiter import RateLimiter
-from typing import List, Dict
+from typing import List
 import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 class FSBOScraper(BaseScraper):
     """Scraper for extracting For Sale By Owner (FSBO) property leads."""
@@ -16,7 +16,9 @@ class FSBOScraper(BaseScraper):
     def __init__(self, rate_limit: int = 50, time_window: int = 60):
         super().__init__(rate_limit, time_window)
 
-    async def search(self, location: str, radius_km: float = 50.0, **kwargs) -> List[LeadCreate]:
+    async def search(
+        self, location: str, radius_km: float = 50.0, **kwargs
+    ) -> List[LeadCreate]:
         """
         Search for FSBO property leads in the specified location.
 
@@ -32,7 +34,9 @@ class FSBOScraper(BaseScraper):
             ScraperError: If scraping fails or rate limit is exceeded.
         """
         try:
-            logger.info(f"Starting FSBO search for location: {location}, radius: {radius_km} km")
+            logger.info(
+                f"Starting FSBO search for location: {location}, radius: {radius_km} km"
+            )
             await self.rate_limiter.acquire()  # Enforce rate limiting
 
             # Simulate API call and response
@@ -94,8 +98,16 @@ class FSBOScraper(BaseScraper):
         """
         await asyncio.sleep(1)  # Simulate network delay
         return [
-            {"ownerName": "Emily Carter", "ownerEmail": "emily.carter@example.com", "ownerPhone": "+4444444444"},
-            {"ownerName": "Jack Brown", "ownerEmail": None, "ownerPhone": "+5555555555"},
+            {
+                "ownerName": "Emily Carter",
+                "ownerEmail": "emily.carter@example.com",
+                "ownerPhone": "+4444444444",
+            },
+            {
+                "ownerName": "Jack Brown",
+                "ownerEmail": None,
+                "ownerPhone": "+5555555555",
+            },
         ]
 
     def _parse_listing(self, listing: dict) -> LeadCreate:
@@ -119,7 +131,7 @@ class FSBOScraper(BaseScraper):
                     "price": listing.get("price"),
                     "location": listing.get("location"),
                     "property_type": listing.get("propertyType"),
-                }
+                },
             )
         except KeyError as e:
             raise ParseError(f"Missing required field: {e}")

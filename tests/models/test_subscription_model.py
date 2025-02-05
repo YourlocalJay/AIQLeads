@@ -1,6 +1,10 @@
-import pytest
 from datetime import datetime, timedelta
-from src.models.subscription_model import Subscription, SubscriptionTier, SubscriptionStatus
+from src.models.subscription_model import (
+    Subscription,
+    SubscriptionTier,
+    SubscriptionStatus,
+)
+
 
 def test_subscription_creation():
     """Test successful creation of a subscription."""
@@ -11,7 +15,7 @@ def test_subscription_creation():
         transaction_id=1,
         tier=SubscriptionTier.BASIC,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
     )
     assert subscription.tier == SubscriptionTier.BASIC
     assert subscription.status == SubscriptionStatus.PENDING
@@ -25,7 +29,7 @@ def test_subscription_cancellation():
         transaction_id=1,
         tier=SubscriptionTier.PREMIUM,
         start_date=datetime.utcnow(),
-        end_date=datetime.utcnow() + timedelta(days=30)
+        end_date=datetime.utcnow() + timedelta(days=30),
     )
     subscription.cancel_subscription()
     assert subscription.status == SubscriptionStatus.CANCELLED
@@ -42,7 +46,7 @@ def test_subscription_renewal():
         tier=SubscriptionTier.PREMIUM,
         start_date=start_date,
         end_date=end_date,
-        auto_renew=True
+        auto_renew=True,
     )
     subscription.renew_subscription(period_days=30)
     assert subscription.start_date == end_date

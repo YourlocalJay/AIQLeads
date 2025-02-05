@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, Any
 import time
 
+
 @dataclass
 class MetricType:
     API_RESPONSE_TIME = "api_response_time"
@@ -9,6 +10,7 @@ class MetricType:
     ERROR_RATE = "error_rate"
     VALIDATION_TIME = "validation_time"
     RATE_LIMIT = "rate_limit"
+
 
 class MetricsCollector:
     def __init__(self):

@@ -1,20 +1,21 @@
 from fastapi import APIRouter, Depends, Request
 from typing import Dict, Any
-from datetime import datetime
 
 from src.config.settings import get_settings
 from src.services.health_service import HealthService
 
-router = APIRouter(prefix='/health', tags=['Health'])
+router = APIRouter(prefix="/health", tags=["Health"])
 settings = get_settings()
+
 
 async def get_health_service(request: Request) -> HealthService:
     """Dependency for creating HealthService instance"""
     return HealthService(request)
 
-@router.get('/')
+
+@router.get("/")
 async def check_health(
-    health_service: HealthService = Depends(get_health_service)
+    health_service: HealthService = Depends(get_health_service),
 ) -> Dict[str, Any]:
     """
     Check health status of all system components
@@ -23,9 +24,10 @@ async def check_health(
     """
     return await health_service.check_all_services()
 
-@router.get('/detailed')
+
+@router.get("/detailed")
 async def detailed_health(
-    health_service: HealthService = Depends(get_health_service)
+    health_service: HealthService = Depends(get_health_service),
 ) -> Dict[str, Any]:
     """
     Get detailed health metrics for all services

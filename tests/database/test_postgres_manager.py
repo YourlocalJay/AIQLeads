@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 from src.database.postgres_manager import (
     PostgresManager,
     DatabaseError,
-    ConnectionError
+    ConnectionError,
 )
 from src.database import Base
+
 
 @pytest.fixture
 def mock_engine():
@@ -19,6 +20,7 @@ def mock_engine():
     engine.pool.checkedout.return_value = 2
     return engine
 
+
 @pytest.fixture
 def mock_session():
     """Fixture for mocked SQLAlchemy session"""
@@ -28,11 +30,13 @@ def mock_session():
     session.close = Mock()
     return session
 
+
 @pytest.fixture
 def mock_session_local():
     """Fixture for mocked session factory"""
     session_local = Mock()
     return session_local
+
 
 class TestPostgresManager:
     """Test suite for PostgresManager"""
@@ -43,8 +47,8 @@ class TestPostgresManager:
         manager2 = PostgresManager()
         assert manager1 is manager2
 
-    @patch('src.database.postgres_manager.create_engine')
-    @patch('src.database.postgres_manager.sessionmaker')
+    @patch("src.database.postgres_manager.create_engine")
+    @patch("src.database.postgres_manager.sessionmaker")
     def test_initialization(self, mock_sessionmaker, mock_create_engine, mock_engine):
         """Test database initialization"""
         mock_create_engine.return_value = mock_engine
@@ -57,7 +61,7 @@ class TestPostgresManager:
         mock_create_engine.assert_called_once()
         mock_sessionmaker.assert_called_once()
 
-    @patch('src.database.postgres_manager.create_engine')
+    @patch("src.database.postgres_manager.create_engine")
     def test_initialization_failure(self, mock_create_engine):
         """Test handling of initialization failures"""
         mock_create_engine.side_effect = Exception("Connection failed")
@@ -103,7 +107,7 @@ class TestPostgresManager:
                 pass
         assert "not initialized" in str(exc_info.value)
 
-    @patch.object(Base.metadata, 'create_all')
+    @patch.object(Base.metadata, "create_all")
     def test_create_database_all_tables(self, mock_create_all, mock_engine):
         """Test creation of all database tables"""
         manager = PostgresManager()
@@ -118,17 +122,21 @@ class TestPostgresManager:
         manager._engine = mock_engine
 
         mock_table1 = Mock()
-        mock_table1.__tablename__ = 'table1'
+        mock_table1.__tablename__ = "table1"
         mock_table1.__table__ = Mock()
 
         mock_table2 = Mock()
-        mock_table2.__tablename__ = 'table2'
+        mock_table2.__tablename__ = "table2"
         mock_table2.__table__ = Mock()
 
         manager.create_database([mock_table1, mock_table2])
 
-        mock_table1.__table__.create.assert_called_once_with(mock_engine, checkfirst=True)
-        mock_table2.__table__.create.assert_called_once_with(mock_engine, checkfirst=True)
+        mock_table1.__table__.create.assert_called_once_with(
+            mock_engine, checkfirst=True
+        )
+        mock_table2.__table__.create.assert_called_once_with(
+            mock_engine, checkfirst=True
+        )
 
     def test_health_check(self, mock_engine):
         """Test database health check functionality"""

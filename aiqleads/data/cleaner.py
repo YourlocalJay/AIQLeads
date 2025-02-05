@@ -1,19 +1,19 @@
-from typing import Dict, Any, List, Optional, Set
-from datetime import datetime
+from typing import Dict, Any, List
 import logging
 import re
 from enum import Enum
 import phonenumbers
 from email_validator import validate_email, EmailNotValidError
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, validator
 import validators
-import pandas as pd
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
+
 class RuleType(str, Enum):
     """Enumeration of supported cleaning rule types"""
+
     EMAIL = "email_normalize"
     PHONE = "phone_normalize"
     TEXT = "text_normalize"
@@ -21,8 +21,10 @@ class RuleType(str, Enum):
     ADDRESS = "address_normalize"
     URL = "url_normalize"
 
+
 class CleaningRule(BaseModel):
     """Represents a rule for normalizing or validating data."""
+
     field_name: str
     rule_type: RuleType
     required: bool = True
@@ -39,12 +41,14 @@ class CleaningRule(BaseModel):
             raise ValueError(f"Unsupported rule type: {value}")
         return value
 
+
 class BaseCleaner(ABC):
     """Abstract base class for all cleaners."""
 
     @abstractmethod
     def clean(self, data: Dict[str, Any], rules: List[CleaningRule]) -> Dict[str, Any]:
         pass
+
 
 class DataCleaner(BaseCleaner):
     """Implements data normalization and cleaning rules."""
@@ -96,7 +100,7 @@ class DataCleaner(BaseCleaner):
         try:
             valid_email = validate_email(email)
             return valid_email.email
-        except EmailNotValidError as e:
+        except EmailNotValidError:
             raise ValueError(f"Invalid email address: {email}")
 
     @staticmethod
@@ -106,7 +110,9 @@ class DataCleaner(BaseCleaner):
             parsed_phone = phonenumbers.parse(phone, "US")  # Adjust region as needed
             if not phonenumbers.is_valid_number(parsed_phone):
                 raise ValueError(f"Invalid phone number: {phone}")
-            return phonenumbers.format_number(parsed_phone, phonenumbers.PhoneNumberFormat.E164)
+            return phonenumbers.format_number(
+                parsed_phone, phonenumbers.PhoneNumberFormat.E164
+            )
         except phonenumbers.NumberParseException:
             raise ValueError(f"Invalid phone number format: {phone}")
 
@@ -134,6 +140,7 @@ class DataCleaner(BaseCleaner):
         if not validators.url(url):
             raise ValueError(f"Invalid URL: {url}")
         return url
+
 
 if __name__ == "__main__":
     # Example usage

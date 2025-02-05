@@ -1,7 +1,6 @@
 from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
 from datetime import datetime
-from geoalchemy2.elements import WKTElement
 from shapely.geometry import Point
 from src.schemas.lead_schema import LeadCreate
 from src.aggregator.exceptions import ParseError
@@ -9,6 +8,7 @@ from src.utils.validators import validate_email, validate_phone
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 class DallasFtWorthParser:
     """
@@ -43,7 +43,9 @@ class DallasFtWorthParser:
             bedrooms = DallasFtWorthParser._extract_bedrooms(soup)
             bathrooms = DallasFtWorthParser._extract_bathrooms(soup)
             contact = DallasFtWorthParser._extract_contact(soup)
-            fraud_score = DallasFtWorthParser._calculate_fraud_score(contact, price, sqft)
+            fraud_score = DallasFtWorthParser._calculate_fraud_score(
+                contact, price, sqft
+            )
 
             lead = LeadCreate(
                 name=contact.get("name", "Unknown"),
@@ -59,7 +61,7 @@ class DallasFtWorthParser:
                     "bathrooms": bathrooms,
                     "fraud_score": fraud_score,
                     "extracted_at": datetime.utcnow().isoformat(),
-                    "parser_version": DallasFtWorthParser.VERSION
+                    "parser_version": DallasFtWorthParser.VERSION,
                 },
             )
             return lead
@@ -102,7 +104,7 @@ class DallasFtWorthParser:
 
             return {
                 "address": location_elem.text.strip(),
-                "coordinates": Point(longitude, latitude).wkt
+                "coordinates": Point(longitude, latitude).wkt,
             }
         except ValueError:
             raise ParseError("Invalid geospatial coordinate format.")
@@ -143,9 +145,21 @@ class DallasFtWorthParser:
     @staticmethod
     def _extract_contact(soup: BeautifulSoup) -> Dict[str, str]:
         contact = {
-            "name": soup.select_one(".contact-name").text.strip() if soup.select_one(".contact-name") else "Unknown",
-            "email": soup.select_one(".contact-email").text.strip() if soup.select_one(".contact-email") else None,
-            "phone": soup.select_one(".contact-phone").text.strip() if soup.select_one(".contact-phone") else None,
+            "name": (
+                soup.select_one(".contact-name").text.strip()
+                if soup.select_one(".contact-name")
+                else "Unknown"
+            ),
+            "email": (
+                soup.select_one(".contact-email").text.strip()
+                if soup.select_one(".contact-email")
+                else None
+            ),
+            "phone": (
+                soup.select_one(".contact-phone").text.strip()
+                if soup.select_one(".contact-phone")
+                else None
+            ),
         }
 
         if contact["email"] and not validate_email(contact["email"]):
@@ -157,7 +171,9 @@ class DallasFtWorthParser:
         return contact
 
     @staticmethod
-    def _calculate_fraud_score(contact: Dict[str, Any], price: Optional[float], sqft: Optional[int]) -> float:
+    def _calculate_fraud_score(
+        contact: Dict[str, Any], price: Optional[float], sqft: Optional[int]
+    ) -> float:
         score = 0.0
 
         if not contact.get("email") and not contact.get("phone"):

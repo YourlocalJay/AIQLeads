@@ -14,6 +14,7 @@ from src.utils.text_processor import clean_text, extract_phone_numbers
 
 logger = logging.getLogger(__name__)
 
+
 class CraigslistParser(BaseParser):
     """
     Optimized parser for Craigslist listings with enhanced validation
@@ -34,13 +35,13 @@ class CraigslistParser(BaseParser):
             LeadCreate: Validated lead object
         """
         try:
-            listing_id = data.get('id')
+            listing_id = data.get("id")
             contact = await self._extract_contact_info(data)
             location = self._extract_location(data)
             price = self._extract_price(data)
-            
-            description = clean_text(data.get('description', ''))
-            
+
+            description = clean_text(data.get("description", ""))
+
             # Enhanced metadata extraction
             metadata = {
                 "title": data.get("title"),
@@ -52,7 +53,7 @@ class CraigslistParser(BaseParser):
                 "extracted_at": datetime.utcnow().isoformat(),
                 "parser_version": self.VERSION,
                 "attributes": self._extract_attributes(data),
-                "keywords": self._extract_keywords(description)
+                "keywords": self._extract_keywords(description),
             }
 
             lead = LeadCreate(
@@ -63,41 +64,44 @@ class CraigslistParser(BaseParser):
                 phone=contact.get("phone"),
                 company_name=contact.get("company_name", "Individual"),
                 location=location,
-                metadata=metadata
+                metadata=metadata,
             )
 
             await self._validate_lead(lead)
             return lead
 
         except Exception as e:
-            logger.error(f"Failed to parse Craigslist listing {data.get('id')}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to parse Craigslist listing {data.get('id')}: {e}",
+                exc_info=True,
+            )
             raise ParseError(f"Failed to parse Craigslist listing: {str(e)}")
 
     async def _extract_contact_info(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and validate contact information with enhanced phone extraction."""
         contact = {
-            'name': data.get('contact_name', 'Unknown'),
-            'email': data.get('from_email'),
-            'phone': None,
-            'company_name': None
+            "name": data.get("contact_name", "Unknown"),
+            "email": data.get("from_email"),
+            "phone": None,
+            "company_name": None,
         }
 
         # Enhanced phone number extraction from description
-        if not contact['phone'] and data.get('description'):
-            phones = extract_phone_numbers(data['description'])
+        if not contact["phone"] and data.get("description"):
+            phones = extract_phone_numbers(data["description"])
             if phones:
-                contact['phone'] = phones[0]  # Use first valid phone number
+                contact["phone"] = phones[0]  # Use first valid phone number
 
         # Validate contact information
-        if contact['email']:
-            contact['email'] = contact['email'].lower()
-            if not validate_email(contact['email']):
-                contact['email'] = None
+        if contact["email"]:
+            contact["email"] = contact["email"].lower()
+            if not validate_email(contact["email"]):
+                contact["email"] = None
 
-        if contact['phone'] and not validate_phone(contact['phone']):
-            contact['phone'] = None
+        if contact["phone"] and not validate_phone(contact["phone"]):
+            contact["phone"] = None
 
-        if not (contact['email'] or contact['phone']):
+        if not (contact["email"] or contact["phone"]):
             raise ParseError("No valid contact information found")
 
         return contact
@@ -105,19 +109,19 @@ class CraigslistParser(BaseParser):
     def _extract_location(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and validate location data with enhanced geocoding."""
         try:
-            lat = data.get('geolocation', {}).get('lat')
-            lon = data.get('geolocation', {}).get('lon')
-            
+            lat = data.get("geolocation", {}).get("lat")
+            lon = data.get("geolocation", {}).get("lon")
+
             if not (lat and lon):
                 raise ValueError("Missing coordinates")
 
             return {
                 "coordinates": WKTElement(f"POINT({lon} {lat})", srid=4326),
-                "address": data.get('address'),
-                "neighborhood": data.get('neighborhood'),
-                "city": data.get('city'),
-                "state": data.get('state'),
-                "raw_data": data.get('geolocation', {})
+                "address": data.get("address"),
+                "neighborhood": data.get("neighborhood"),
+                "city": data.get("city"),
+                "state": data.get("state"),
+                "raw_data": data.get("geolocation", {}),
             }
 
         except Exception as e:
@@ -127,16 +131,16 @@ class CraigslistParser(BaseParser):
     def _extract_price(self, data: Dict[str, Any]) -> Optional[float]:
         """Extract and validate price with enhanced parsing."""
         try:
-            price_str = data.get('price', '')
+            price_str = data.get("price", "")
             if not price_str:
                 return None
-                
+
             # Remove currency symbols and normalize
-            price_str = ''.join(c for c in price_str if c.isdigit() or c == '.')
+            price_str = "".join(c for c in price_str if c.isdigit() or c == ".")
             price = float(price_str)
-            
+
             return validate_price(price)
-            
+
         except (ValueError, TypeError) as e:
             logger.warning(f"Price extraction failed: {e}")
             return None
@@ -144,11 +148,11 @@ class CraigslistParser(BaseParser):
     def _extract_attributes(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract listing attributes with validation."""
         attributes = {}
-        
-        if 'attributes' in data:
-            for attr in data['attributes']:
-                key = attr.get('key', '').lower()
-                value = attr.get('value')
+
+        if "attributes" in data:
+            for attr in data["attributes"]:
+                key = attr.get("key", "").lower()
+                value = attr.get("value")
                 if key and value:
                     attributes[key] = value
 
@@ -178,11 +182,11 @@ class CraigslistParser(BaseParser):
             score += 20.0
 
         # Contact information completeness
-        if not data.get('from_email'):
+        if not data.get("from_email"):
             score += 10.0
 
         # Location accuracy
-        if not data.get('geolocation'):
+        if not data.get("geolocation"):
             score += 15.0
 
         # Add more fraud detection rules
@@ -197,7 +201,7 @@ class CraigslistParser(BaseParser):
         if not lead.location:
             raise ParseError("Invalid location data")
 
-        if lead.metadata.get('fraud_score', 0) > 80:
+        if lead.metadata.get("fraud_score", 0) > 80:
             raise ParseError("Lead failed fraud detection")
 
         if not lead.email and not lead.phone:

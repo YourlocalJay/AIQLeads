@@ -2,7 +2,7 @@
 LinkedIn parser with enhanced validation and performance optimization.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime
 import logging
 from geoalchemy2.elements import WKTElement
@@ -15,6 +15,7 @@ from src.utils.performance import PerformanceOptimizer
 
 logger = logging.getLogger(__name__)
 
+
 class LinkedInParser(BaseParser):
     """
     Optimized parser for LinkedIn data with enhanced validation
@@ -23,7 +24,7 @@ class LinkedInParser(BaseParser):
 
     MARKET_ID = "linkedin"
     VERSION = "2.1"
-    
+
     def __init__(self):
         super().__init__()
         self.result_cache = ResultCache(ttl_seconds=3600)
@@ -32,9 +33,7 @@ class LinkedInParser(BaseParser):
     async def parse_async(self, data: Dict[str, Any]) -> LeadCreate:
         """Parse LinkedIn listing with performance monitoring."""
         return await self.performance_optimizer.optimize_operation(
-            'linkedin_parse',
-            self._parse_listing,
-            data
+            "linkedin_parse", self._parse_listing, data
         )
 
     async def _parse_listing(self, data: Dict[str, Any]) -> LeadCreate:
@@ -45,10 +44,10 @@ class LinkedInParser(BaseParser):
             if cached_result:
                 return cached_result
 
-            listing_id = data.get('id')
+            listing_id = data.get("id")
             contact = await self._extract_contact_info(data)
             location = self._extract_location(data)
-            
+
             metadata = {
                 "company_info": self._extract_company_info(data),
                 "job_details": self._extract_job_details(data),
@@ -59,7 +58,7 @@ class LinkedInParser(BaseParser):
                 "verification_score": await self._calculate_verification_score(data),
                 "extracted_at": datetime.utcnow().isoformat(),
                 "parser_version": self.VERSION,
-                "engagement_metrics": self._extract_engagement_metrics(data)
+                "engagement_metrics": self._extract_engagement_metrics(data),
             }
 
             lead = LeadCreate(
@@ -70,7 +69,7 @@ class LinkedInParser(BaseParser):
                 phone=contact.get("phone"),
                 company_name=contact.get("company_name"),
                 location=location,
-                metadata=metadata
+                metadata=metadata,
             )
 
             await self._validate_lead(lead)
@@ -78,28 +77,30 @@ class LinkedInParser(BaseParser):
             return lead
 
         except Exception as e:
-            logger.error(f"Failed to parse LinkedIn listing {data.get('id')}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to parse LinkedIn listing {data.get('id')}: {e}", exc_info=True
+            )
             raise ParseError(f"Failed to parse LinkedIn listing: {str(e)}")
 
     async def _extract_contact_info(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and validate contact information."""
         contact = {
-            'name': self._extract_name(data),
-            'email': data.get('email'),
-            'phone': data.get('phone'),
-            'company_name': data.get('company_name')
+            "name": self._extract_name(data),
+            "email": data.get("email"),
+            "phone": data.get("phone"),
+            "company_name": data.get("company_name"),
         }
 
-        if contact['email']:
-            contact['email'] = contact['email'].lower()
-            if not validate_email(contact['email']):
-                contact['email'] = None
+        if contact["email"]:
+            contact["email"] = contact["email"].lower()
+            if not validate_email(contact["email"]):
+                contact["email"] = None
 
-        if contact['phone']:
-            if not validate_phone(contact['phone']):
-                contact['phone'] = None
+        if contact["phone"]:
+            if not validate_phone(contact["phone"]):
+                contact["phone"] = None
 
-        if not (contact['email'] or contact['phone']):
+        if not (contact["email"] or contact["phone"]):
             alternative_contact = await self._extract_alternative_contact(data)
             contact.update(alternative_contact)
 
@@ -107,13 +108,13 @@ class LinkedInParser(BaseParser):
 
     def _extract_name(self, data: Dict[str, Any]) -> str:
         """Extract and format name information."""
-        recruiter_data = data.get('recruiter', {})
+        recruiter_data = data.get("recruiter", {})
         if recruiter_data:
             parts = []
-            if recruiter_data.get('first_name'):
-                parts.append(recruiter_data['first_name'])
-            if recruiter_data.get('last_name'):
-                parts.append(recruiter_data['last_name'])
+            if recruiter_data.get("first_name"):
+                parts.append(recruiter_data["first_name"])
+            if recruiter_data.get("last_name"):
+                parts.append(recruiter_data["last_name"])
             if parts:
                 return " ".join(parts)
         return "Unknown"
@@ -121,19 +122,19 @@ class LinkedInParser(BaseParser):
     def _extract_location(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and validate location data."""
         try:
-            location_data = data.get('location', {})
-            lat = location_data.get('latitude')
-            lon = location_data.get('longitude')
+            location_data = data.get("location", {})
+            lat = location_data.get("latitude")
+            lon = location_data.get("longitude")
 
             if not (lat and lon):
                 raise ValueError("Missing coordinates")
 
             return {
                 "coordinates": WKTElement(f"POINT({lon} {lat})", srid=4326),
-                "city": location_data.get('city'),
-                "state": location_data.get('state'),
-                "country": location_data.get('country'),
-                "raw_data": location_data
+                "city": location_data.get("city"),
+                "state": location_data.get("state"),
+                "country": location_data.get("country"),
+                "raw_data": location_data,
             }
 
         except Exception as e:
@@ -142,7 +143,7 @@ class LinkedInParser(BaseParser):
 
     def _extract_company_info(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract comprehensive company information."""
-        company_data = data.get('company', {})
+        company_data = data.get("company", {})
         return {
             "name": company_data.get("name"),
             "industry": company_data.get("industry"),
@@ -150,7 +151,7 @@ class LinkedInParser(BaseParser):
             "type": company_data.get("type"),
             "linkedin_url": company_data.get("linkedin_url"),
             "founded_year": company_data.get("founded_year"),
-            "specialties": company_data.get("specialties", [])
+            "specialties": company_data.get("specialties", []),
         }
 
     def _extract_job_details(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -163,27 +164,27 @@ class LinkedInParser(BaseParser):
             "skills": data.get("skills", []),
             "experience_level": data.get("experience_level"),
             "work_type": data.get("work_type"),
-            "salary_range": self._extract_salary_range(data)
+            "salary_range": self._extract_salary_range(data),
         }
 
     def _extract_salary_range(self, data: Dict[str, Any]) -> Optional[Dict[str, float]]:
         """Extract and validate salary information."""
-        salary_data = data.get('salary_range', {})
+        salary_data = data.get("salary_range", {})
         if not salary_data:
             return None
-            
+
         try:
-            min_salary = validate_price(salary_data.get('min'))
-            max_salary = validate_price(salary_data.get('max'))
-            
+            min_salary = validate_price(salary_data.get("min"))
+            max_salary = validate_price(salary_data.get("max"))
+
             if min_salary and max_salary:
                 return {
                     "min": min_salary,
                     "max": max_salary,
-                    "currency": salary_data.get('currency', 'USD')
+                    "currency": salary_data.get("currency", "USD"),
                 }
             return None
-            
+
         except ValueError:
             return None
 
@@ -193,7 +194,7 @@ class LinkedInParser(BaseParser):
             "views": data.get("view_count", 0),
             "applications": data.get("application_count", 0),
             "shares": data.get("share_count", 0),
-            "saves": data.get("save_count", 0)
+            "saves": data.get("save_count", 0),
         }
 
     async def _calculate_verification_score(self, data: Dict[str, Any]) -> float:
@@ -202,29 +203,31 @@ class LinkedInParser(BaseParser):
         deductions = []
 
         # Company verification
-        if not data.get('company', {}).get('verified'):
+        if not data.get("company", {}).get("verified"):
             deductions.append(20.0)
 
         # Profile completeness
-        company_info = data.get('company', {})
-        if not all([
-            company_info.get('name'),
-            company_info.get('industry'),
-            company_info.get('size')
-        ]):
+        company_info = data.get("company", {})
+        if not all(
+            [
+                company_info.get("name"),
+                company_info.get("industry"),
+                company_info.get("size"),
+            ]
+        ):
             deductions.append(15.0)
 
         # Contact information
-        if not (data.get('email') or data.get('phone')):
+        if not (data.get("email") or data.get("phone")):
             deductions.append(25.0)
 
         # Engagement metrics
         engagement = self._extract_engagement_metrics(data)
-        if engagement['views'] == 0:
+        if engagement["views"] == 0:
             deductions.append(10.0)
 
         # Location verification
-        if not data.get('location', {}).get('coordinates'):
+        if not data.get("location", {}).get("coordinates"):
             deductions.append(15.0)
 
         return max(0.0, score - sum(deductions))
@@ -237,7 +240,7 @@ class LinkedInParser(BaseParser):
         if not lead.location:
             raise ParseError("Invalid location data")
 
-        if lead.metadata.get('verification_score', 0) < 40:
+        if lead.metadata.get("verification_score", 0) < 40:
             raise ParseError("Lead failed verification checks")
 
         if not (lead.email or lead.phone):

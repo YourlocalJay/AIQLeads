@@ -1,8 +1,7 @@
 import asyncio
 from typing import List, Dict, Optional, Set
-from datetime import datetime, timedelta
-import numpy as np
 from dataclasses import dataclass
+
 
 @dataclass
 class MarketTrend:
@@ -12,6 +11,7 @@ class MarketTrend:
     competition_level: float
     saturation_index: float
 
+
 @dataclass
 class UserIntent:
     user_id: str
@@ -19,6 +19,7 @@ class UserIntent:
     preferred_regions: Set[str]
     price_sensitivity: float
     engagement_level: float
+
 
 class ExpansionForecaster:
     async def predict_high_potential_areas(self, region_id: str) -> Dict:
@@ -33,6 +34,7 @@ class ExpansionForecaster:
         """Track and analyze competitor expansion risks."""
         pass
 
+
 class RegionalAnalyzer:
     async def compare_recommendations(self, regions: List[str]) -> Dict:
         """Compare recommendation patterns across regions."""
@@ -45,6 +47,7 @@ class RegionalAnalyzer:
     async def benchmark_penetration(self, region_id: str) -> float:
         """Calculate market penetration rate for a region."""
         pass
+
 
 class TrendDetector:
     async def analyze_user_behavior(self, user_id: str) -> Dict:
@@ -59,6 +62,7 @@ class TrendDetector:
         """Generate personalized property notifications."""
         pass
 
+
 class LeadScorer:
     async def score_lead(self, lead_id: str) -> float:
         """Calculate AI-based lead score."""
@@ -71,6 +75,7 @@ class LeadScorer:
     async def predict_conversion(self, lead_id: str) -> float:
         """Predict lead conversion probability."""
         pass
+
 
 class MarketPredictor:
     async def forecast_demand(self, region_id: str) -> Dict:
@@ -85,6 +90,7 @@ class MarketPredictor:
         """Identify rising and declining property types."""
         pass
 
+
 class ReportGenerator:
     async def generate_recommendation_report(self) -> Dict:
         """Generate periodic recommendation report."""
@@ -97,6 +103,7 @@ class ReportGenerator:
     async def schedule_outreach(self, lead_id: str) -> Dict:
         """Schedule automated lead outreach."""
         pass
+
 
 class LiveUpdateManager:
     def __init__(self):
@@ -114,6 +121,7 @@ class LiveUpdateManager:
         """Broadcast market update to subscribed users."""
         pass
 
+
 class IntentPredictor:
     async def predict_intent(self, user_id: str) -> UserIntent:
         """Predict user purchase intent."""
@@ -127,6 +135,7 @@ class IntentPredictor:
     async def _calculate_intent_score(self, behaviors: Dict) -> UserIntent:
         """Calculate user intent score from behaviors."""
         pass
+
 
 class RecommendationEngine:
     def __init__(self):
@@ -144,7 +153,7 @@ class RecommendationEngine:
         user_id: str,
         region_id: Optional[str] = None,
         price_range: Optional[Dict] = None,
-        property_type: Optional[str] = None
+        property_type: Optional[str] = None,
     ) -> List[Dict]:
         """Generate personalized recommendations with enhanced features."""
         try:
@@ -157,14 +166,18 @@ class RecommendationEngine:
                 market_data = await asyncio.gather(
                     self.market_predictor.forecast_demand(region_id),
                     self.market_predictor.analyze_price_trends(region_id),
-                    self.market_predictor.identify_property_trends(region_id)
+                    self.market_predictor.identify_property_trends(region_id),
                 )
 
             # Generate expansion insights
-            expansion_data = await self.expansion_forecaster.predict_high_potential_areas(region_id)
+            expansion_data = (
+                await self.expansion_forecaster.predict_high_potential_areas(region_id)
+            )
 
             # Compare regional patterns
-            regional_insights = await self.regional_analyzer.compare_recommendations([region_id])
+            regional_insights = await self.regional_analyzer.compare_recommendations(
+                [region_id]
+            )
 
             # Analyze real-time trends
             trend_data = await self.trend_detector.analyze_user_behavior(user_id)
@@ -177,7 +190,7 @@ class RecommendationEngine:
                 regional_insights=regional_insights,
                 trend_data=trend_data,
                 price_range=price_range,
-                property_type=property_type
+                property_type=property_type,
             )
 
             # Setup live updates
@@ -197,7 +210,7 @@ class RecommendationEngine:
         regional_insights: Dict,
         trend_data: Dict,
         price_range: Optional[Dict] = None,
-        property_type: Optional[str] = None
+        property_type: Optional[str] = None,
     ) -> List[Dict]:
         """Process all signals to generate enhanced recommendations."""
         pass
@@ -216,15 +229,14 @@ class RecommendationEngine:
         """Process user activity and update recommendations."""
         # Update intent prediction
         new_intent = await self.intent_predictor.predict_intent(user_id)
-        
+
         # Update lead scoring if applicable
-        if 'lead_id' in activity_data:
-            await self.lead_scorer.score_lead(activity_data['lead_id'])
-        
+        if "lead_id" in activity_data:
+            await self.lead_scorer.score_lead(activity_data["lead_id"])
+
         # Trigger real-time updates if needed
         if new_intent.engagement_level > 0.7:  # High engagement threshold
             recommendations = await self.generate_recommendations(user_id)
-            await self.live_update_manager.broadcast_update(user_id, {
-                'type': 'new_recommendations',
-                'data': recommendations
-            })
+            await self.live_update_manager.broadcast_update(
+                user_id, {"type": "new_recommendations", "data": recommendations}
+            )

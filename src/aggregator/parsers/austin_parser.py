@@ -1,15 +1,18 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from bs4 import BeautifulSoup
-from geoalchemy2.shape import to_shape
 from shapely.geometry import Point
 from datetime import datetime
 from src.schemas.lead_schema import LeadCreate
 from src.aggregator.exceptions import ParseError
 from src.aggregator.parsers.base_parser import BaseParser
-from src.utils.validators import validate_price, validate_email, validate_geospatial_coordinates
+from src.utils.validators import (
+    validate_price,
+    validate_geospatial_coordinates,
+)
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 class AustinParser(BaseParser):
     """
@@ -143,7 +146,10 @@ class AustinParser(BaseParser):
             fraud_score += 50.0
 
         # Unrealistic pricing
-        if price_elem and float(price_elem.text.strip().replace("$", "").replace(",", "")) < 50000:
+        if (
+            price_elem
+            and float(price_elem.text.strip().replace("$", "").replace(",", "")) < 50000
+        ):
             fraud_score += 40.0
 
         return min(fraud_score, 100.0)

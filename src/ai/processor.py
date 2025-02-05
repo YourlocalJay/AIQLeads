@@ -1,15 +1,16 @@
 """
 Core AI Processor using Fireworks AI
 """
+
 import httpx
-from typing import Dict, Any, List
-import json
+from typing import Dict, Any
 from ..core.config import (
     FIREWORKS_API_KEY,
     FIREWORKS_MODEL,
     FIREWORKS_MAX_TOKENS,
-    SCORING_WEIGHTS
+    SCORING_WEIGHTS,
 )
+
 
 class LeadProcessor:
     def __init__(self):
@@ -29,7 +30,7 @@ class LeadProcessor:
     async def analyze_property(self, property_data: Dict[str, Any]) -> Dict[str, Any]:
         """Basic property analysis"""
         prompt = self._build_property_prompt(property_data)
-        
+
         response = await self.client.post(
             "https://api.fireworks.ai/inference/v1/complete",
             headers={"Authorization": f"Bearer {self.api_key}"},
@@ -37,23 +38,19 @@ class LeadProcessor:
                 "model": self.model,
                 "prompt": prompt,
                 "max_tokens": FIREWORKS_MAX_TOKENS,
-                "temperature": 0.7
-            }
+                "temperature": 0.7,
+            },
         )
-        
+
         if response.status_code != 200:
             return {"error": "Analysis failed", "details": response.text}
-            
+
         analysis = response.json()
         return self._parse_analysis(analysis)
 
     async def get_market_trends(self, location: str) -> Dict[str, Any]:
         """Basic market trend analysis"""
-        return {
-            "trend": "stable",
-            "confidence": 0.8,
-            "factors": ["price", "inventory"]
-        }
+        return {"trend": "stable", "confidence": 0.8, "factors": ["price", "inventory"]}
 
     def _build_property_prompt(self, property_data: Dict[str, Any]) -> str:
         """Builds AI prompt for property analysis"""
@@ -75,10 +72,7 @@ class LeadProcessor:
         try:
             text = raw_analysis.get("choices", [{}])[0].get("text", "")
             # Basic parsing for MVP
-            return {
-                "summary": text,
-                "score": self._extract_score(text)
-            }
+            return {"summary": text, "score": self._extract_score(text)}
         except Exception as e:
             return {"error": str(e)}
 
@@ -87,7 +81,7 @@ class LeadProcessor:
         # Simple scoring for MVP
         positive_indicators = ["excellent", "good", "great"]
         negative_indicators = ["poor", "bad", "concerns"]
-        
+
         score = 70.0  # Base score
         for word in positive_indicators:
             if word in text.lower():
@@ -95,5 +89,5 @@ class LeadProcessor:
         for word in negative_indicators:
             if word in text.lower():
                 score -= 5
-                
+
         return min(max(score, 0), 100)  # Normalize to 0-100

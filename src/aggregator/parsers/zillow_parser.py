@@ -13,6 +13,7 @@ from src.utils.validators import validate_email, validate_phone, validate_price
 
 logger = logging.getLogger(__name__)
 
+
 class ZillowParser(BaseParser):
     """
     Parser for Zillow GraphQL API responses with enhanced validation,
@@ -37,17 +38,17 @@ class ZillowParser(BaseParser):
         """
         try:
             # Extract core listing data
-            listing_id = data.get('id')
+            listing_id = data.get("id")
             price = self._extract_price(data)
             location = self._extract_location(data)
             contact = await self._extract_contact_info(data)
-            
+
             # Calculate risk metrics
             fraud_score = self._calculate_fraud_score(
                 price=price,
-                property_type=data.get('propertyType'),
-                days_on_market=data.get('daysOnZillow'),
-                contact=contact
+                property_type=data.get("propertyType"),
+                days_on_market=data.get("daysOnZillow"),
+                contact=contact,
             )
 
             lead = LeadCreate(
@@ -65,20 +66,22 @@ class ZillowParser(BaseParser):
                     "fraud_score": fraud_score,
                     "is_fsbo": data.get("isFSBO", False),
                     "extracted_at": datetime.utcnow().isoformat(),
-                    "parser_version": self.VERSION
-                }
+                    "parser_version": self.VERSION,
+                },
             )
 
             await self._validate_lead(lead)
             return lead
 
         except Exception as e:
-            logger.error(f"Failed to parse Zillow listing {data.get('id')}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to parse Zillow listing {data.get('id')}: {e}", exc_info=True
+            )
             raise ParseError(f"Failed to parse Zillow listing: {str(e)}")
 
     def _extract_price(self, data: Dict[str, Any]) -> Optional[float]:
         """Extract and validate price from listing data."""
-        price = data.get('price')
+        price = data.get("price")
         if price is not None:
             try:
                 return validate_price(price)
@@ -89,18 +92,18 @@ class ZillowParser(BaseParser):
 
     def _extract_location(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Extract and validate location data."""
-        location_data = data.get('location', {})
-        
+        location_data = data.get("location", {})
+
         try:
-            latitude = location_data.get('latitude')
-            longitude = location_data.get('longitude')
+            latitude = location_data.get("latitude")
+            longitude = location_data.get("longitude")
 
             if latitude is None or longitude is None:
                 raise ValueError("Missing geospatial coordinates")
 
             return {
                 "coordinates": WKTElement(f"POINT({longitude} {latitude})", srid=4326),
-                "raw_data": location_data
+                "raw_data": location_data,
             }
 
         except (ValueError, TypeError) as e:
@@ -110,39 +113,43 @@ class ZillowParser(BaseParser):
     async def _extract_contact_info(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and validate contact information."""
         contact = {}
-        
+
         # Handle agent data
-        if 'agent' in data:
-            agent_data = data['agent']
-            contact.update({
-                'name': agent_data.get('name'),
-                'company_name': agent_data.get('brokerName'),
-                'phone': agent_data.get('phoneNumber'),
-                'email': agent_data.get('email')
-            })
-        
+        if "agent" in data:
+            agent_data = data["agent"]
+            contact.update(
+                {
+                    "name": agent_data.get("name"),
+                    "company_name": agent_data.get("brokerName"),
+                    "phone": agent_data.get("phoneNumber"),
+                    "email": agent_data.get("email"),
+                }
+            )
+
         # Handle FSBO data
-        if data.get('isFSBO') and 'owner' in data:
-            owner_data = data['owner']
-            contact.update({
-                'name': owner_data.get('name'),
-                'phone': owner_data.get('phoneNumber'),
-                'email': owner_data.get('email'),
-                'company_name': 'FSBO'
-            })
+        if data.get("isFSBO") and "owner" in data:
+            owner_data = data["owner"]
+            contact.update(
+                {
+                    "name": owner_data.get("name"),
+                    "phone": owner_data.get("phoneNumber"),
+                    "email": owner_data.get("email"),
+                    "company_name": "FSBO",
+                }
+            )
 
         # Validate contact data
-        if contact.get('email'):
-            if not validate_email(contact['email']):
+        if contact.get("email"):
+            if not validate_email(contact["email"]):
                 logger.warning(f"Invalid email format: {contact['email']}")
-                contact['email'] = None
+                contact["email"] = None
 
-        if contact.get('phone'):
-            if not validate_phone(contact['phone']):
+        if contact.get("phone"):
+            if not validate_phone(contact["phone"]):
                 logger.warning(f"Invalid phone format: {contact['phone']}")
-                contact['phone'] = None
+                contact["phone"] = None
 
-        if not contact.get('email') and not contact.get('phone'):
+        if not contact.get("email") and not contact.get("phone"):
             raise ParseError("No valid contact information available")
 
         return contact
@@ -152,13 +159,13 @@ class ZillowParser(BaseParser):
         price: Optional[float],
         property_type: Optional[str],
         days_on_market: Optional[int],
-        contact: Dict[str, Any]
+        contact: Dict[str, Any],
     ) -> float:
         """Calculate fraud risk score based on listing attributes."""
         score = 0.0
 
         # Contact information checks
-        if not contact.get('email') or not contact.get('phone'):
+        if not contact.get("email") or not contact.get("phone"):
             score += 20.0
 
         # Price anomaly checks
@@ -194,7 +201,7 @@ class ZillowParser(BaseParser):
         if not lead.location:
             raise ParseError("Invalid or missing location data")
 
-        if lead.metadata.get('fraud_score', 0) > 80:
+        if lead.metadata.get("fraud_score", 0) > 80:
             raise ParseError("Lead failed fraud detection checks")
 
         # Ensure either email or phone is present

@@ -1,12 +1,12 @@
 from src.aggregator.base_scraper import BaseScraper
 from src.schemas.lead_schema import LeadCreate
 from src.aggregator.exceptions import ScraperError, ParseError
-from src.aggregator.rate_limiter import RateLimiter
-from typing import List, Dict
+from typing import List
 import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 class FacebookScraper(BaseScraper):
     """Scraper for extracting real estate leads from Facebook Marketplace."""
@@ -15,7 +15,9 @@ class FacebookScraper(BaseScraper):
         super().__init__(rate_limit, time_window)
         self.session_token = None  # Placeholder for Facebook session management
 
-    async def search(self, location: str, radius_km: float = 50.0, **kwargs) -> List[LeadCreate]:
+    async def search(
+        self, location: str, radius_km: float = 50.0, **kwargs
+    ) -> List[LeadCreate]:
         """
         Search for leads on Facebook Marketplace.
 
@@ -31,7 +33,9 @@ class FacebookScraper(BaseScraper):
             ScraperError: If scraping fails or rate limit is exceeded.
         """
         try:
-            logger.info(f"Starting Facebook Marketplace search for location: {location}, radius: {radius_km} km")
+            logger.info(
+                f"Starting Facebook Marketplace search for location: {location}, radius: {radius_km} km"
+            )
             await self.rate_limiter.acquire()  # Enforce rate limiting
 
             # Simulate API call and response
@@ -39,7 +43,9 @@ class FacebookScraper(BaseScraper):
 
             # Parse and validate leads
             leads = [self._parse_listing(listing) for listing in raw_listings]
-            logger.info(f"Successfully extracted {len(leads)} leads from Facebook Marketplace.")
+            logger.info(
+                f"Successfully extracted {len(leads)} leads from Facebook Marketplace."
+            )
             return leads
         except Exception as e:
             self.add_error("search_error", str(e))
@@ -56,7 +62,7 @@ class FacebookScraper(BaseScraper):
         try:
             logger.info("Validating Facebook credentials.")
             return True  # Simulated validation for MVP purposes
-        except Exception as e:
+        except Exception:
             logger.error("Facebook credential validation failed.")
             raise ScraperError("Invalid Facebook credentials.")
 
@@ -97,7 +103,11 @@ class FacebookScraper(BaseScraper):
         """
         await asyncio.sleep(1)  # Simulate network delay
         return [
-            {"name": "Chris Walker", "email": "chris.walker@example.com", "phone": "+3333333333"},
+            {
+                "name": "Chris Walker",
+                "email": "chris.walker@example.com",
+                "phone": "+3333333333",
+            },
             {"name": "Diana Scott", "email": "diana.scott@example.com", "phone": None},
         ]
 
@@ -116,7 +126,7 @@ class FacebookScraper(BaseScraper):
                 name=listing["name"],
                 email=listing.get("email"),
                 phone=listing.get("phone"),
-                source="Facebook Marketplace"
+                source="Facebook Marketplace",
             )
         except KeyError as e:
             raise ParseError(f"Missing required field: {e}")
