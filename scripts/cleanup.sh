@@ -64,7 +64,6 @@ find . -type d -empty -delete
 # Handle duplicate files
 echo -e "\n${YELLOW}Checking duplicate files from analysis...${NC}"
 if confirm "Would you like to review and remove duplicate files? [y/N] "; then
-    # Python script to process duplicates
     python3 - <<EOF
 import json
 import os
