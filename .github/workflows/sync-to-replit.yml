@@ -1,0 +1,22 @@
+name: Sync to Replit
+
+on:
+  push:
+    branches:
+      - main  # or your default branch
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  sync-to-replit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Sync to Replit
+        uses: replit/replit-sync@v0.1.0
+        with:
+          replit-id: ${{ secrets.REPLIT_ID }}  # Your Replit project ID
+          token: ${{ secrets.REPLIT_TOKEN }}   # Your Replit token
+          github-token: ${{ secrets.GITHUB_TOKEN }}
