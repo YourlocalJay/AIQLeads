@@ -1,5 +1,4 @@
 from playwright.async_api import async_playwright, Page
-from app.core.config import settings
 
 class PersistentBrowserManager:
     """Handles persistent browser sessions per domain with LRU eviction."""
@@ -10,6 +9,7 @@ class PersistentBrowserManager:
 
     @classmethod
     async def get_instance(cls):
+        """Returns a singleton browser manager instance."""
         if not cls._instance:
             cls._instance = PersistentBrowserManager()
             await cls._instance._initialize()
