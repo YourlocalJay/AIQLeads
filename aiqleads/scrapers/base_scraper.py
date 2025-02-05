@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse, urljoin
+import asyncio
 import httpx
 from bs4 import BeautifulSoup
+
 from app.services.logging import logger
 from app.services.cache.redis_service import AIQRedisCache
 from aiqleads.utils.request_fingerprint import RequestFingerprinter
@@ -14,35 +16,32 @@ from aiqleads.utils.errors import NetworkError, ScraperError
 
 
 class BaseScraper(ABC):
-    """
-    Base Scraper with advanced scraping capabilities.
-    """
+    """Base Scraper with AI-enhanced dynamic fingerprinting, rate limiting, and proxy management."""
 
     def __init__(
         self,
         base_url: str,
-        default_rate_limit: int = 10,
+        rate_limit: int = 10,
         timeout: float = 30.0,
         proxies: Optional[List[str]] = None,
         cache: Optional[AIQRedisCache] = None,
     ):
         self.base_url = base_url
         self.timeout = timeout
-        self.rate_limiter = RateLimiter(default_rate_limit)
+        self.rate_limiter = RateLimiter(rate_limit)
         self.proxy_manager = ProxyManager(proxies)
         self.cache = cache or AIQRedisCache()
         self.metrics = PerformanceMetricsAggregator()
         self._browser_manager: Optional[PersistentBrowserManager] = None
 
     async def _get_browser_manager(self) -> PersistentBrowserManager:
+        """Lazy initializes the browser manager for Playwright scraping."""
         if not self._browser_manager:
             self._browser_manager = await PersistentBrowserManager.get_instance()
         return self._browser_manager
 
     async def _safe_fetch(self, url: str, method: str = "GET", **kwargs) -> Optional[Dict[str, Any]]:
-        """
-        Fetches data from a URL with proxy management, caching, and AI fingerprinting.
-        """
+        """Fetches data from a URL with intelligent request handling and failovers."""
         domain = urlparse(url).netloc
         if not self.rate_limiter.can_make_request(domain):
             return None
@@ -70,5 +69,5 @@ class BaseScraper(ABC):
 
     @abstractmethod
     async def scrape(self, query: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Abstract method for custom scraper implementations."""
+        """Abstract method for defining the core scraping logic."""
         pass
