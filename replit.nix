@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.python312Packages.uvicorn
     pkgs.ruff
     pkgs.python312Packages.black
     pkgs.rustc
