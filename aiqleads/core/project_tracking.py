@@ -12,16 +12,19 @@ from pathlib import Path
 
 from ..utils.logging import setup_logger
 
-logger = setup_logger(__name__)
+# Set up module logger with debug level
+logger = setup_logger(__name__, level=logging.DEBUG)
 
 class ProjectTracker:
     """Manages project components and their status."""
     
     def __init__(self, base_path: str = "aiqleads"):
         """Initialize the project tracker."""
+        logger.debug(f"Initializing ProjectTracker with base_path: {base_path}")
         self.base_path = base_path
         self.data_dir = os.path.join(base_path, "data")
         os.makedirs(self.data_dir, exist_ok=True)
+        logger.debug(f"Created data directory: {self.data_dir}")
         
         self.components: Dict[str, Dict] = {}
         self.status_history: List[Dict] = []
@@ -36,18 +39,24 @@ class ProjectTracker:
         
         # Load existing state if available
         self._load_state()
+        logger.debug("ProjectTracker initialization complete")
         
     def _load_project_structure(self) -> Dict:
         """Load project structure from PROJECT_STRUCTURE.md."""
         try:
             root = Path(__file__).parent.parent.parent
             structure_path = os.path.join(root, "docs", "PROJECT_STRUCTURE.md")
+            logger.debug(f"Loading project structure from: {structure_path}")
+            
             if os.path.exists(structure_path):
                 with open(structure_path, 'r') as f:
                     content = f.read()
-                # Parse the markdown structure (simplified for now)
+                logger.debug("Successfully loaded project structure")
                 return {"root": self.base_path}
+            
+            logger.warning("PROJECT_STRUCTURE.md not found, using default structure")
             return {"root": self.base_path}
+            
         except Exception as e:
             logger.error(f"Failed to load project structure: {e}")
             return {"root": self.base_path}
@@ -59,18 +68,23 @@ class ProjectTracker:
             registry_file = os.path.join(self.data_dir, "component_registry.json")
             
             if os.path.exists(status_file):
+                logger.debug(f"Loading project status from: {status_file}")
                 with open(status_file, 'r') as f:
                     data = json.load(f)
                     self.current_status = data.get("project_status", self.current_status)
                     self.status_history = data.get("status_history", [])
+                    logger.debug("Successfully loaded project status")
                     
             if os.path.exists(registry_file):
+                logger.debug(f"Loading component registry from: {registry_file}")
                 with open(registry_file, 'r') as f:
                     data = json.load(f)
                     self.components = data.get("components", {})
+                    logger.debug(f"Loaded {len(self.components)} components")
                     
         except Exception as e:
             logger.error(f"Failed to load existing state: {e}")
+            logger.debug("Using default initialization state")
             
     def _save_state(self) -> bool:
         """Save current state to data files."""
@@ -84,6 +98,7 @@ class ProjectTracker:
             }
             
             status_file = os.path.join(self.data_dir, "project_status.json")
+            logger.debug(f"Saving project status to: {status_file}")
             with open(status_file, 'w') as f:
                 json.dump(status_data, f, indent=2)
                 
@@ -95,9 +110,11 @@ class ProjectTracker:
             }
             
             registry_file = os.path.join(self.data_dir, "component_registry.json")
+            logger.debug(f"Saving component registry to: {registry_file}")
             with open(registry_file, 'w') as f:
                 json.dump(registry_data, f, indent=2)
                 
+            logger.debug("Successfully saved state files")
             return True
             
         except Exception as e:
@@ -120,17 +137,18 @@ class ProjectTracker:
             bool: True if registration successful, False otherwise
         """
         try:
+            logger.debug(f"Attempting to register component: {component_path}")
             if not self._validate_path(component_path):
                 logger.error(f"Invalid component path: {component_path}")
                 return False
                 
             # Check for duplicates
-            if self._get_component_id(component_path) in self.components:
+            component_id = self._get_component_id(component_path)
+            if component_id in self.components:
                 logger.error(f"Component already registered: {component_path}")
                 return False
                 
             full_path = os.path.join(self.base_path, component_path)
-            component_id = self._get_component_id(component_path)
             
             self.components[component_id] = {
                 "path": full_path,
@@ -142,6 +160,7 @@ class ProjectTracker:
             }
             
             logger.info(f"Registered component: {component_id}")
+            logger.debug(f"Component details: {self.components[component_id]}")
             self._update_status(f"Component registered: {component_id}")
             self._save_state()
             return True
@@ -166,17 +185,22 @@ class ProjectTracker:
             bool: True if update successful
         """
         component_id = self._get_component_id(component_path)
+        logger.debug(f"Updating status for component: {component_id}")
         
         if component_id not in self.components:
             logger.error(f"Component not registered: {component_id}")
             return False
             
         try:
+            old_status = self.components[component_id]["status"]
             self.components[component_id].update({
                 "status": status,
                 "last_modified": datetime.now().isoformat(),
                 "details": details or {}
             })
+            
+            logger.debug(f"Status changed: {old_status} -> {status}")
+            logger.debug(f"Update details: {details}")
             
             self._update_status(f"Component {component_id} status: {status}")
             self._save_state()
@@ -196,16 +220,21 @@ class ProjectTracker:
         Returns:
             bool: True if path is valid
         """
+        logger.debug(f"Validating path: {path}")
+        
         if not path.startswith(self.base_path):
             path = os.path.join(self.base_path, path)
+            logger.debug(f"Adjusted path: {path}")
             
         # Basic validation - ensure path is within project
         normalized_path = os.path.normpath(path)
         if not normalized_path.startswith(self.base_path):
+            logger.error(f"Path outside project root: {normalized_path}")
             return False
             
         # Check for directory traversal
         if '..' in normalized_path:
+            logger.error(f"Directory traversal detected: {normalized_path}")
             return False
             
         # Ensure path matches project structure
@@ -213,8 +242,11 @@ class ProjectTracker:
         path_parts = Path(path).parts
         if len(path_parts) > 1:
             if path_parts[1] not in allowed_dirs:
+                logger.error(f"Invalid directory: {path_parts[1]}")
+                logger.debug(f"Allowed directories: {allowed_dirs}")
                 return False
                 
+        logger.debug(f"Path validation successful: {path}")
         return True
 
     def _get_component_id(self, path: str) -> str:
@@ -223,6 +255,8 @@ class ProjectTracker:
 
     def _update_status(self, status_msg: str) -> None:
         """Update the current status and add to history."""
+        logger.debug(f"Updating status: {status_msg}")
+        
         status_entry = {
             "timestamp": datetime.now().isoformat(),
             "status": status_msg,
@@ -235,15 +269,18 @@ class ProjectTracker:
         })
         
         self.status_history.append(status_entry)
+        logger.debug(f"Status history size: {len(self.status_history)}")
 
     def get_component_status(self, component_path: str) -> Optional[Dict]:
         """Get the current status of a component."""
         component_id = self._get_component_id(component_path)
+        logger.debug(f"Getting status for component: {component_id}")
         return self.components.get(component_id)
 
     def get_project_status(self) -> Dict:
         """Get the overall project status."""
-        return {
+        logger.debug("Getting project status")
+        status = {
             "current_status": self.current_status,
             "components": len(self.components),
             "last_update": self.current_status["last_update"],
@@ -252,10 +289,13 @@ class ProjectTracker:
                 if v["status"] in ["active", "in_progress"]
             ]
         }
+        logger.debug(f"Project status: {status}")
+        return status
 
     def export_status(self, output_path: str) -> bool:
         """Export the current project status to a file."""
         try:
+            logger.debug(f"Exporting status to: {output_path}")
             status_data = {
                 "timestamp": datetime.now().isoformat(),
                 "project_status": self.get_project_status(),
@@ -268,6 +308,7 @@ class ProjectTracker:
                 json.dump(status_data, f, indent=2)
                 
             logger.info(f"Exported status to: {output_path}")
+            logger.debug(f"Exported {len(self.components)} components")
             return True
             
         except Exception as e:
@@ -281,5 +322,6 @@ def get_tracker(base_path: str = "aiqleads") -> ProjectTracker:
     """Get or create the project tracker instance."""
     global _project_tracker
     if _project_tracker is None:
+        logger.debug("Creating new ProjectTracker instance")
         _project_tracker = ProjectTracker(base_path)
     return _project_tracker
