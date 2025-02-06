@@ -1,11 +1,14 @@
+#!/usr/bin/env python3
 """Script to register existing components in the project tracking system"""
 
-from pathlib import Path
+import os
 import sys
+from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root.parent))
+# Add aiqleads package root to Python path
+root_dir = str(Path(__file__).resolve().parents[2])
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
 
 from aiqleads.core.project_tracking import ProjectTracker
 
@@ -67,7 +70,9 @@ def register_core_components():
     
     # Register all components
     all_components = core_components + api_components
+    registered = 0
     
+    print("Registering components...")
     for comp_type, comp_id, comp_def in all_components:
         if tracker.register_component(comp_type, comp_id, comp_def):
             # Update initial status based on UNIVERSAL_PROMPT statuses
@@ -77,6 +82,10 @@ def register_core_components():
             else:
                 tracker.update_status(comp_id, "🔴 Not Started",
                                    "Initial registration from universal prompt")
+            registered += 1
+            print(f"✓ Registered {comp_id}")
+    
+    print(f"\nRegistration complete: {registered}/{len(all_components)} components registered")
 
 if __name__ == "__main__":
     register_core_components()
