@@ -2,67 +2,26 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi_cache.decorator import cache
 from typing import Optional, List
-from pydantic import BaseModel, Field, EmailStr
 from datetime import datetime, timedelta
+from pydantic import BaseModel, EmailStr, Field
+from functools import lru_cache
+from aiqleads.core.security import create_access_token, verify_token
 from aiqleads.core.project_tracking import ProjectTracker
 from aiqleads.services.user_service import UserService
 from aiqleads.middlewares.rate_limiter import RateLimiter
 from aiqleads.utils.logging import logger
 from aiqleads.models.user_model import User, UserCreate, UserUpdate
-from contextlib import asynccontextmanager
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
-# Initialize services
+# Singleton instances
 user_service = UserService()
 tracker = ProjectTracker()
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int
-    refresh_token: Optional[str] = None
-
-class TokenData(BaseModel):
-    username: str
-    scopes: List[str] = []
-
-class UserResponse(BaseModel):
-    id: str
-    email: EmailStr
-    full_name: str
-    credits_balance: float
-    is_active: bool
-    last_login: Optional[datetime]
-    subscription_tier: str
-    features_enabled: List[str]
-
-    class Config:
-        schema_extra = {
-            "example": {
-                "id": "user_123",
-                "email": "user@example.com",
-                "full_name": "John Doe",
-                "credits_balance": 1000.0,
-                "is_active": True,
-                "last_login": "2025-02-05T14:30:00Z",
-                "subscription_tier": "professional",
-                "features_enabled": ["lead_scoring", "market_analysis", "chatbot"]
-            }
-        }
-
-class CreditTransaction(BaseModel):
-    amount: float = Field(..., gt=0, description="Amount of credits to add or subtract")
-    description: str = Field(..., min_length=3, max_length=200)
-    transaction_type: str = Field(..., regex="^(add|subtract)$")
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-@asynccontextmanager
+# 📌 Context Manager for Operation Tracking
 async def track_operation(component_id: str, operation_name: str, **kwargs):
-    """Context manager for tracking operations and logging"""
+    """Tracks operation status in `ProjectTracker`."""
     try:
-        yield
         tracker.update_status(
             component_id=component_id,
             status="🟢 Active",
@@ -77,180 +36,128 @@ async def track_operation(component_id: str, operation_name: str, **kwargs):
         logger.error(f"Operation failed: {operation_name} | Error: {e}")
         raise
 
+# 📌 Token Model
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    refresh_token: Optional[str] = None
+
+# 📌 User Response Model
+class UserResponse(User):
+    id: str
+    credits_balance: float
+    subscription_tier: str
+    features_enabled: List[str] = []
+
+# 📌 Credit Transaction Model
+class CreditTransaction(BaseModel):
+    amount: float = Field(..., gt=0, description="Amount of credits to add or subtract")
+    description: str = Field(..., min_length=3, max_length=200)
+    transaction_type: str = Field(..., regex="^(add|subtract)$")
+
+# 📌 OAuth2 Dependency
+@lru_cache()
+def get_oauth_token():
+    return OAuth2PasswordBearer(tokenUrl="token")
+
+oauth2_scheme = get_oauth_token()
+
+def verify_authenticated(token: str = Depends(oauth2_scheme)):
+    """Verifies authentication token and extracts user ID."""
+    try:
+        payload = verify_token(token)
+        if not payload.get('id'):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
+        return payload['id']
+    except:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
+
+# 📌 User Authentication - Token Generation
 @router.post("/token", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    """
-    Authenticate user and return access token.
-    """
-    async with track_operation("api/v1/users/token", "User Authentication", username=form_data.username):
-        user = await user_service.authenticate_user(form_data.username, form_data.password)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect username or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        
-        access_token = user_service.create_access_token(
-            data={"sub": user.email, "scopes": user.scopes}
-        )
-        refresh_token = user_service.create_refresh_token(
-            data={"sub": user.email}
-        )
-        
-        return Token(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_in=3600  # 1 hour
+    """Authenticates user and returns an access token."""
+    user = await user_service.authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
+    access_token = create_access_token(data={"sub": user.email})
+    refresh_token = create_access_token(data={"sub": user.email}, expires_delta=timedelta(days=7))
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": (await verify_token(access_token))['exp'],
+        "refresh_token": refresh_token
+    }
+
+# 📌 Token Refresh
 @router.post("/refresh", response_model=Token)
 async def refresh_token(refresh_token: str):
-    """
-    Get new access token using refresh token.
-    """
-    async with track_operation("api/v1/users/refresh", "Token Refresh"):
-        token_data = user_service.validate_refresh_token(refresh_token)
-        if not token_data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token"
-            )
-        
-        new_access_token = user_service.create_access_token(
-            data={"sub": token_data.username, "scopes": token_data.scopes}
-        )
-        
-        return Token(
-            access_token=new_access_token,
-            expires_in=3600
-        )
+    """Refreshes access token using a valid refresh token."""
+    new_token = await user_service.refresh_token(refresh_token)
+    return {
+        "access_token": new_token,
+        "token_type": "bearer",
+        "expires_in": (await verify_token(new_token))['exp']
+    }
 
-@router.post("/register", response_model=UserResponse, 
-    dependencies=[Depends(RateLimiter(requests_per_minute=10))])
+# 📌 User Registration
+@router.post("/register", response_model=UserResponse)
 async def register_user(user_data: UserCreate):
-    """
-    Register a new user account.
-    """
-    async with track_operation("api/v1/users/register", "User Registration", email=user_data.email):
-        if await user_service.get_user_by_email(user_data.email):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
-            )
-        
-        user = await user_service.create_user(user_data)
-        return user
+    """Registers a new user and returns user details."""
+    if await user_service.get_user_by_email(user_data.email):
+        raise HTTPException(status_code=400, detail="Email already registered")
 
-@router.get("/me", response_model=UserResponse,
-    dependencies=[Depends(RateLimiter(requests_per_minute=60))])
-@cache(expire=60)  # Cache for 1 minute
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    """
-    Get current authenticated user's details.
-    """
-    async with track_operation("api/v1/users/me", "Get Current User"):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        return user
+    new_user = await user_service.create_user(user_data)
+    return UserResponse.from_orm(new_user)
 
-@router.put("/me", response_model=UserResponse,
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))])
-async def update_user(
-    update_data: UserUpdate,
-    token: str = Depends(oauth2_scheme)
-):
-    """
-    Update current user's information.
-    """
-    async with track_operation("api/v1/users/me", "Update User"):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        updated_user = await user_service.update_user(user.id, update_data)
-        return updated_user
+# 📌 Get Current User
+@router.get("/me", response_model=UserResponse)
+@cache(expire=60)
+async def get_current_user(user_id: str = Depends(verify_authenticated)):
+    """Retrieves the authenticated user's profile."""
+    user = await user_service.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserResponse.from_orm(user)
 
-@router.post("/credits", response_model=UserResponse,
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))])
-async def manage_credits(
-    transaction: CreditTransaction,
-    token: str = Depends(oauth2_scheme)
-):
-    """
-    Add or subtract credits from user's account.
-    """
-    async with track_operation(
-        "api/v1/users/credits", 
-        f"Credit {transaction.transaction_type}",
-        amount=transaction.amount
-    ):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        if transaction.transaction_type == "subtract" and user.credits_balance < transaction.amount:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Insufficient credits"
-            )
-        
-        updated_user = await user_service.update_credits(
-            user.id,
-            transaction.amount,
-            transaction.transaction_type,
-            transaction.description
-        )
-        return updated_user
+# 📌 Update User Profile
+@router.put("/me", response_model=UserResponse)
+async def update_user(update_data: UserUpdate, user_id: str = Depends(verify_authenticated)):
+    """Updates the user's profile details."""
+    updated_user = await user_service.update_user(user_id, update_data)
+    return UserResponse.from_orm(updated_user)
 
-@router.get("/credits/history",
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))])
-@cache(expire=300)  # Cache for 5 minutes
-async def get_credit_history(
-    token: str = Depends(oauth2_scheme),
-    limit: int = 10,
-    offset: int = 0
-):
-    """
-    Get user's credit transaction history.
-    """
-    async with track_operation("api/v1/users/credits/history", "Get Credit History"):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        history = await user_service.get_credit_history(user.id, limit, offset)
-        return history
+# 📌 Manage User Credits
+@router.post("/credits", response_model=UserResponse)
+async def manage_credits(transaction: CreditTransaction, user_id: str = Depends(verify_authenticated)):
+    """Adds or subtracts credits from user account."""
+    user = await user_service.update_credits(user_id, transaction.amount, transaction.transaction_type, transaction.description)
+    return UserResponse.from_orm(user)
 
-@router.post("/subscription/upgrade",
-    dependencies=[Depends(RateLimiter(requests_per_minute=10))])
-async def upgrade_subscription(
-    tier: str,
-    token: str = Depends(oauth2_scheme)
-):
-    """
-    Upgrade user's subscription tier.
-    """
-    async with track_operation("api/v1/users/subscription", "Subscription Upgrade", tier=tier):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        updated_user = await user_service.upgrade_subscription(user.id, tier)
-        return updated_user
+# 📌 Get Credit Transaction History
+@router.get("/credits/history", dependencies=[Depends(RateLimiter(requests_per_minute=30))])
+@cache(expire=300)
+async def get_credit_history(user_id: str = Depends(verify_authenticated), limit: int = 10, offset: int = 0):
+    """Fetches credit transaction history for the user."""
+    history = await user_service.get_credit_history(user_id, limit, offset)
+    return {"transactions": history}
+
+# 📌 Upgrade User Subscription
+@router.post("/subscription/upgrade", dependencies=[Depends(RateLimiter(requests_per_minute=10))])
+async def upgrade_subscription(subscription_tier: str, user_id: str = Depends(verify_authenticated)):
+    """Upgrades user subscription tier."""
+    updated_user = await user_service.upgrade_subscription(user_id, subscription_tier)
+    return UserResponse.from_orm(updated_user)
+
+# 📌 Cancel User Subscription
+@router.post("/subscription/cancel", dependencies=[Depends(RateLimiter(requests_per_minute=10))])
+async def cancel_subscription(user_id: str = Depends(verify_authenticated)):
+    """Cancels user's active subscription."""
+    updated_user = await user_service.cancel_subscription(user_id)
+    return UserResponse.from_orm(updated_user)
