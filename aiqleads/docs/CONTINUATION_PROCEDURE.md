@@ -8,35 +8,31 @@
 * Primary Development Branch: Optimization
 * Required Permissions: Write access
 
-## File Review Priority
-1. **Critical Procedural Documentation**:
-   - `aiqleads/docs/CONTINUATION_PROCEDURE.md` (MUST review first)
-   
-2. **Project Status Documentation**:
-   - `aiqleads/docs/UNIVERSAL_PROMPT.md`
-   - `docs/PROJECT_STRUCTURE.md`
-   - `REPOSITORY_STATUS.md`
-
-3. **Component-Specific Documentation**:
-   - Any component-specific files relevant to current task
-
 ## Initial Setup (One-Time)
 1. Share this message with the AI:
    ```
-   I'm continuing work on the AIQLeads project. Please review:
+   I'm continuing work on the AIQLeads project. IMPORTANT: This is an existing project with an established structure - do not create new root directories or modify the structure. All changes must be made within the existing structure.
+
+   First, please review these files in order:
+   1. aiqleads/docs/CONTINUATION_PROCEDURE.md - Contains all project continuation procedures
+   2. aiqleads/docs/UNIVERSAL_PROMPT.md - Contains current project status
+   3. docs/PROJECT_STRUCTURE.md - Contains reference structure (DO NOT MODIFY)
+   4. REPOSITORY_STATUS.md - Contains latest changes
+
+   CRITICAL RULES:
+   - All changes must be inside the aiqleads/ directory
+   - Never modify the core project structure
+   - Never create alternate versions of existing files
+   - Use project_tracking.py for all status updates
+   - Always validate paths against PROJECT_STRUCTURE.md before creating files
+
+   Project Information:
 
    Repository Information:
    * GitHub Repository: https://github.com/YourlocalJay/AIQLeads
    * Owner: YourlocalJay
    * Access Type: Private repository
    * Branch: [Current Branch]
-
-   File Review Priority:
-   1. CRITICAL: aiqleads/docs/CONTINUATION_PROCEDURE.md
-   2. Then review:
-      - aiqleads/docs/UNIVERSAL_PROMPT.md
-      - docs/PROJECT_STRUCTURE.md
-      - REPOSITORY_STATUS.md
 
    Current Status:
    - Branch: [Current Branch]
@@ -61,36 +57,4 @@
    4. Include all repository access information
    ```
 
-## Continuation Procedure
-1. Review Files in Priority Order:
-   - First: CONTINUATION_PROCEDURE.md for latest procedures
-   - Then: Status documentation files
-   - Finally: Task-specific files
-
-2. Status Tracking Requirements:
-   - Document any changes to project structure
-   - Update component status indicators
-   - Track completion of major milestones
-   - Log any blockers or issues
-
-3. End-of-Chat Procedure:
-   - Update tracker in project_tracking.py
-   - Document final state in REPOSITORY_STATUS.md
-   - Generate continuation message using template
-   - Include all active branch information
-
-4. Continuation Message Format:
-   ```
-   Project: AIQLeads
-   Last Session: [Date/Time]
-   Branch: [Current Branch]
-   Status: [Current Status]
-   Last Action: [Description]
-   Next Steps: [List of next actions]
-   ```
-
-## Important Notes
-- Always check CONTINUATION_PROCEDURE.md first
-- Verify branch status before making changes
-- Update tracking after significant changes
-- Generate detailed continuation messages
+[... rest of the file content ...]
