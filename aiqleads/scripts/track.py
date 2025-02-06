@@ -7,8 +7,9 @@ from pathlib import Path
 import argparse
 
 # Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root.parent))
+root_dir = str(Path(__file__).resolve().parents[2])
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
 
 from aiqleads.core.project_tracking import ProjectTracker, ComponentStatus
 
