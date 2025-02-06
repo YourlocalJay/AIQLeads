@@ -1,165 +1,317 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import APIRouter, Depends, HTTPException, status, Security
+from fastapi.security import OAuth2PasswordBearer, SecurityScopes, OAuth2PasswordRequestForm
 from fastapi_cache.decorator import cache
-from typing import List, Optional, Dict, Any
-from datetime import datetime
-from pydantic import BaseModel, Field
+from typing import Optional, List
+from pydantic import BaseModel, EmailStr, Field, validator, SecretStr
+from datetime import datetime, timedelta
 from aiqleads.core.project_tracking import ProjectTracker
-from aiqleads.services.analytics_service import AnalyticsService
 from aiqleads.services.user_service import UserService
 from aiqleads.middlewares.rate_limiter import RateLimiter
 from aiqleads.utils.logging import logger
+from aiqleads.models.user_model import User, UserCreate, UserUpdate, UserRoles
 from contextlib import asynccontextmanager
+from fastapi.responses import JSONResponse
+from jose import JWTError
+from passlib.context import CryptContext
+from typing import Annotated
+import uuid
 
-router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
+router = APIRouter(prefix="/api/v1/users", tags=["users"])
+
+# Security configurations
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="token",
+    scopes={
+        "user:read": "Read user information",
+        "user:write": "Modify user information",
+        "admin": "Admin privileges"
+    }
+)
 
 # Initialize services
-analytics_service = AnalyticsService()
 user_service = UserService()
 tracker = ProjectTracker()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Context Manager for Operation Tracking
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    refresh_token: Optional[str] = None
+
+class UserResponse(BaseModel):
+    id: str
+    email: EmailStr
+    full_name: str
+    credits_balance: float = Field(..., ge=0)
+    is_active: bool
+    last_login: Optional[datetime]
+    subscription_tier: Optional[str]
+    features_enabled: List[str]
+    roles: List[str]
+
+    @validator("credits_balance")
+    def validate_credits(cls, value):
+        if value < 0:
+            raise ValueError("Credits balance cannot be negative")
+        return value
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "id": "user_123",
+                "email": "user@example.com",
+                "full_name": "John Doe",
+                "credits_balance": 1000.0,
+                "is_active": True,
+                "last_login": "2025-02-05T14:30:00Z",
+                "subscription_tier": "professional",
+                "features_enabled": ["lead_scoring", "market_analysis", "chatbot"],
+                "roles": ["user"]
+            }
+        }
+
+class CreditTransaction(BaseModel):
+    amount: float = Field(..., gt=0, description="Amount of credits to add or subtract")
+    description: str = Field(..., min_length=3, max_length=200)
+    transaction_type: str = Field(..., regex="^(add|subtract)$")
+
+class PasswordUpdate(BaseModel):
+    current_password: SecretStr
+    new_password: SecretStr
+
+    @validator("new_password")
+    def validate_password_complexity(cls, v):
+        if len(v.get_secret_value()) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        return v
+
+async def get_current_user(
+    security_scopes: SecurityScopes,
+    token: Annotated[str, Depends(oauth2_scheme)]
+) -> User:
+    try:
+        payload = user_service.verify_token(token)
+        if not payload:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        user = await user_service.get_user_by_email(payload.get("sub"))
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User inactive or deleted",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        if security_scopes.scopes:
+            for scope in security_scopes.scopes:
+                if scope not in user.roles:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Missing required scope: {scope}",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+        return user
+    except JWTError as e:
+        logger.error(f"JWT validation error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
 @asynccontextmanager
 async def track_operation(component_id: str, operation_name: str, **kwargs):
-    """Tracks operation status in `ProjectTracker`."""
+    """Enhanced operation tracking with error classification"""
     try:
         yield
-        tracker.update_status(
+        tracker.log_operation(
             component_id=component_id,
-            status="🟢 Active",
-            notes=f"{operation_name} completed successfully: {kwargs}"
+            operation=operation_name,
+            status="success",
+            details=kwargs
         )
-    except Exception as e:
-        tracker.update_status(
+    except HTTPException as he:
+        tracker.log_operation(
             component_id=component_id,
-            status="⭕ Error",
-            notes=f"Error during {operation_name}: {str(e)}"
+            operation=operation_name,
+            status="client_error",
+            details={**kwargs, "error": he.detail}
         )
-        logger.error(f"Operation failed: {operation_name} | Error: {e}")
         raise
-
-# 📌 TimeRange Model
-class TimeRange(BaseModel):
-    start_date: datetime
-    end_date: datetime = Field(default_factory=datetime.utcnow)
-    granularity: str = Field("day", regex="^(hour|day|week|month)$")
-
-# 📌 PerformanceMetrics Model
-class PerformanceMetrics(BaseModel):
-    conversion_rate: float = Field(..., ge=0, le=1)
-    average_response_time: float = Field(..., ge=0)
-    lead_quality_score: float = Field(..., ge=0, le=100)
-    engagement_rate: float = Field(..., ge=0, le=1)
-    roi: float
-
-# 📌 Lead Insights Model
-class LeadInsights(BaseModel):
-    total_leads: int = Field(..., ge=0)
-    qualified_leads: int = Field(..., ge=0)
-    conversion_rate: float = Field(..., ge=0, le=1)
-    average_deal_size: float = Field(..., ge=0)
-    top_sources: List[Dict[str, Any]]
-    growth_rate: float
-
-# 📌 Predictive Analytics Model
-class PredictiveAnalytics(BaseModel):
-    lead_scoring_accuracy: float = Field(..., ge=0, le=1)
-    churn_risk_factors: List[Dict[str, float]]
-    growth_opportunities: List[Dict[str, Any]]
-    market_trends: List[Dict[str, Any]]
-    recommendations: List[str]
-
-# 📌 Market Segment Model
-class MarketSegment(BaseModel):
-    segment_name: str
-    size: int = Field(..., ge=0)
-    average_budget: float = Field(..., ge=0)
-    conversion_rate: float = Field(..., ge=0, le=1)
-    lifetime_value: float = Field(..., ge=0)
-    growth_potential: float = Field(..., ge=0, le=1)
-
-# 📌 Get Performance Metrics
-@router.get(
-    "/performance",
-    response_model=PerformanceMetrics,
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))],
-    summary="Get Performance Metrics"
-)
-@cache(expire=300)  # Cache for 5 minutes
-async def get_performance_metrics(time_range: TimeRange, token: str = Depends(oauth2_scheme)):
-    """Fetch performance metrics including conversion rates, response times, and ROI."""
-    async with track_operation("api/v1/analytics/performance", "Get Performance Metrics"):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication credentials")
-        
-        return await analytics_service.calculate_performance_metrics(
-            user_id=user.id, start_date=time_range.start_date, end_date=time_range.end_date, granularity=time_range.granularity
+    except Exception as e:
+        tracker.log_operation(
+            component_id=component_id,
+            operation=operation_name,
+            status="server_error",
+            details={**kwargs, "error": str(e)}
+        )
+        logger.error(f"Operation failed: {operation_name}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )
 
-# 📌 Get Lead Insights
-@router.get(
-    "/leads",
-    response_model=LeadInsights,
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))],
-    summary="Get Lead Insights"
-)
+@router.post("/token", response_model=Token)
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    async with track_operation("users/auth", "User Authentication", username=form_data.username):
+        user = await user_service.authenticate_user(form_data.username, form_data.password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        access_token = user_service.create_access_token(
+            data={"sub": user.email, "scopes": user.roles}
+        )
+        refresh_token = user_service.create_refresh_token(
+            data={"sub": user.email}
+        )
+
+        await user_service.update_last_login(user.id)
+        return Token(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=user_service.access_token_expire_minutes * 60
+        )
+
+@router.post("/refresh", response_model=Token)
+async def refresh_token(refresh_token: str):
+    async with track_operation("users/auth", "Token Refresh"):
+        new_access_token = await user_service.refresh_access_token(refresh_token)
+        return Token(
+            access_token=new_access_token,
+            expires_in=user_service.access_token_expire_minutes * 60
+        )
+
+@router.post("/register", response_model=UserResponse, 
+            dependencies=[Depends(RateLimiter(requests_per_minute=5))])
+async def register_user(user_data: UserCreate):
+    async with track_operation("users/registration", "User Registration", email=user_data.email):
+        existing_user = await user_service.get_user_by_email(user_data.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+        
+        new_user = await user_service.create_user(user_data)
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content=UserResponse(**new_user.dict()).dict()
+        )
+
+@router.get("/me", response_model=UserResponse,
+           dependencies=[Depends(RateLimiter(requests_per_minute=60))])
+@cache(expire=60)
+async def get_current_user_profile(
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    return UserResponse(**current_user.dict())
+
+@router.put("/me", response_model=UserResponse,
+           dependencies=[Depends(RateLimiter(requests_per_minute=30))])
+async def update_user_profile(
+    update_data: UserUpdate,
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    async with track_operation("users/profile", "Update Profile", user_id=current_user.id):
+        updated_user = await user_service.update_user(current_user.id, update_data)
+        return UserResponse(**updated_user.dict())
+
+@router.post("/me/password", response_model=UserResponse,
+            dependencies=[Depends(RateLimiter(requests_per_minute=10))])
+async def change_password(
+    password_data: PasswordUpdate,
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    async with track_operation("users/password", "Change Password", user_id=current_user.id):
+        if not user_service.verify_password(
+            password_data.current_password.get_secret_value(),
+            current_user.hashed_password
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Incorrect current password"
+            )
+        
+        updated_user = await user_service.change_password(
+            current_user.id,
+            password_data.new_password.get_secret_value()
+        )
+        return UserResponse(**updated_user.dict())
+
+@router.post("/credits", response_model=UserResponse,
+           dependencies=[Depends(RateLimiter(requests_per_minute=30))])
+async def manage_credits(
+    transaction: CreditTransaction,
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    async with track_operation("users/credits", "Credit Management", user_id=current_user.id):
+        if transaction.transaction_type == "subtract" and current_user.credits_balance < transaction.amount:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Insufficient credits"
+            )
+        
+        updated_user = await user_service.update_credits(
+            current_user.id,
+            transaction.amount,
+            transaction.transaction_type,
+            transaction.description
+        )
+        return UserResponse(**updated_user.dict())
+
+@router.get("/credits/history", dependencies=[Depends(RateLimiter(requests_per_minute=30))])
 @cache(expire=300)
-async def get_lead_insights(time_range: TimeRange, token: str = Depends(oauth2_scheme)):
-    """Fetch insights including total leads, conversion rates, and growth trends."""
-    async with track_operation("api/v1/analytics/leads", "Get Lead Insights"):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication credentials")
+async def get_credit_history(
+    current_user: Annotated[User, Depends(get_current_user)],
+    limit: int = 10,
+    offset: int = 0
+):
+    async with track_operation("users/credits/history", "Credit History", user_id=current_user.id):
+        history = await user_service.get_credit_history(current_user.id, limit, offset)
+        return {
+            "transactions": [t.dict() for t in history],
+            "total": await user_service.get_credit_history_count(current_user.id),
+            "limit": limit,
+            "offset": offset
+        }
 
-        return await analytics_service.analyze_leads(user.id, time_range.start_date, time_range.end_date)
+@router.post("/subscription/upgrade", response_model=UserResponse,
+            dependencies=[Depends(RateLimiter(requests_per_minute=10))])
+async def upgrade_subscription(
+    tier: str,
+    current_user: Annotated[User, Security(get_current_user, scopes=["user:write"])]
+):
+    async with track_operation("users/subscription", "Subscription Upgrade", user_id=current_user.id):
+        if current_user.subscription_tier == tier:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Already subscribed to {tier} tier"
+            )
+        
+        updated_user = await user_service.upgrade_subscription(current_user.id, tier)
+        return UserResponse(**updated_user.dict())
 
-# 📌 Get Predictive Analytics
-@router.get(
-    "/predictive",
-    response_model=PredictiveAnalytics,
-    dependencies=[Depends(RateLimiter(requests_per_minute=20))],
-    summary="Get Predictive Analytics"
-)
-@cache(expire=1800)  # Cache for 30 minutes
-async def get_predictive_analytics(time_range: TimeRange, token: str = Depends(oauth2_scheme)):
-    """Generate AI-powered insights including churn risks, growth factors, and recommendations."""
-    async with track_operation("api/v1/analytics/predictive", "Get Predictive Analytics"):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication credentials")
-
-        return await analytics_service.generate_predictions(user.id, time_range.start_date, time_range.end_date)
-
-# 📌 Get Market Segments
-@router.get(
-    "/market-segments",
-    response_model=List[MarketSegment],
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))],
-    summary="Analyze Market Segments"
-)
-@cache(expire=600)
-async def get_market_segments(time_range: TimeRange, token: str = Depends(oauth2_scheme)):
-    """Fetch performance metrics for market segments based on size, conversion rates, and budget."""
-    async with track_operation("api/v1/analytics/market-segments", "Get Market Segments"):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication credentials")
-
-        return await analytics_service.analyze_market_segments(user.id, time_range.start_date, time_range.end_date)
-
-# 📌 Export Analytics
-@router.get(
-    "/export",
-    dependencies=[Depends(RateLimiter(requests_per_minute=10))],
-    summary="Export Analytics Data"
-)
-async def export_analytics(time_range: TimeRange, format: str = Query("csv", regex="^(csv|xlsx|json)$"), token: str = Depends(oauth2_scheme)):
-    """Export analytics data in CSV, XLSX, or JSON format."""
-    async with track_operation("api/v1/analytics/export", "Export Analytics"):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication credentials")
-
-        return await analytics_service.export_analytics(user.id, time_range.start_date, time_range.end_date, format)
+@router.post("/subscription/cancel", response_model=UserResponse,
+            dependencies=[Depends(RateLimiter(requests_per_minute=10))])
+async def cancel_subscription(
+    current_user: Annotated[User, Security(get_current_user, scopes=["user:write"])]
+):
+    async with track_operation("users/subscription", "Subscription Cancel", user_id=current_user.id):
+        if not current_user.subscription_tier:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No active subscription to cancel"
+            )
+        
+        updated_user = await user_service.cancel_subscription(current_user.id)
+        return UserResponse(**updated_user.dict())
