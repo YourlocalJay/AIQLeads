@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from fastapi.security import OAuth2PasswordBearer
 from fastapi_cache.decorator import cache
 from typing import List, Optional, Dict, Any
@@ -10,6 +10,7 @@ from aiqleads.services.user_service import UserService
 from aiqleads.middlewares.rate_limiter import RateLimiter
 from aiqleads.utils.logging import logger
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 router = APIRouter(prefix="/api/v1/chatbot", tags=["chatbot"])
 
@@ -19,67 +20,10 @@ user_service = UserService()
 tracker = ProjectTracker()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-class Message(BaseModel):
-    content: str = Field(..., min_length=1, max_length=2000)
-    role: str = Field("user", regex="^(user|assistant|system)$")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    metadata: Optional[Dict[str, Any]] = None
-
-    class Config:
-        schema_extra = {
-            "example": {
-                "content": "Tell me about lead XYZ's engagement history",
-                "role": "user",
-                "timestamp": "2025-02-05T14:30:00Z",
-                "metadata": {
-                    "lead_id": "lead_xyz",
-                    "context": "engagement_history"
-                }
-            }
-        }
-
-class Conversation(BaseModel):
-    id: str
-    messages: List[Message]
-    context: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-class ChatResponse(BaseModel):
-    message: Message
-    suggested_actions: List[str] = []
-    confidence_score: float = Field(..., ge=0, le=1)
-    requires_human: bool = False
-    follow_up_questions: List[str] = []
-
-    class Config:
-        schema_extra = {
-            "example": {
-                "message": {
-                    "content": "Lead XYZ has shown increasing engagement...",
-                    "role": "assistant",
-                    "timestamp": "2025-02-05T14:30:05Z",
-                    "metadata": {
-                        "lead_id": "lead_xyz",
-                        "confidence": 0.95
-                    }
-                },
-                "suggested_actions": [
-                    "Schedule follow-up call",
-                    "Send personalized proposal"
-                ],
-                "confidence_score": 0.95,
-                "requires_human": False,
-                "follow_up_questions": [
-                    "Would you like to see their contact history?",
-                    "Should I analyze their purchase patterns?"
-                ]
-            }
-        }
-
+# 📌 Context Manager for Operation Tracking
 @asynccontextmanager
 async def track_operation(component_id: str, operation_name: str, **kwargs):
-    """Context manager for tracking operations and logging"""
+    """Tracks operation status in `ProjectTracker`."""
     try:
         yield
         tracker.update_status(
@@ -96,233 +40,139 @@ async def track_operation(component_id: str, operation_name: str, **kwargs):
         logger.error(f"Operation failed: {operation_name} | Error: {e}")
         raise
 
-@router.post("/{conversation_id}/message",
+# 📌 Message Model
+class Message(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
+    role: str = Field("user", regex="^(user|assistant|system)$")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    metadata: Optional[Dict[str, Any]] = None
+
+# 📌 Conversation Model
+class Conversation(BaseModel):
+    id: str
+    messages: List[Message]
+    context: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+# 📌 Chat Response Model
+class ChatResponse(BaseModel):
+    message: Message
+    suggested_actions: List[str] = []
+    confidence_score: float = Field(..., ge=0, le=1)
+    requires_human: bool = False
+    follow_up_questions: List[str] = []
+
+# 📌 Send Message to Chatbot
+@router.post(
+    "/{conversation_id}/message",
     response_model=ChatResponse,
-    dependencies=[Depends(RateLimiter(requests_per_minute=60))])
+    dependencies=[Depends(RateLimiter(requests_per_minute=60))],
+    summary="Send a Message to the Chatbot"
+)
 async def send_message(
     conversation_id: str,
     message: Message,
     background_tasks: BackgroundTasks,
     token: str = Depends(oauth2_scheme)
 ):
-    """
-    Send a message to the AI chatbot and get a response.
-    """
-    async with track_operation(
-        "api/v1/chatbot/message",
-        "Process Chat Message",
-        conversation_id=conversation_id
-    ):
+    """Process a user message and return an AI chatbot response."""
+    async with track_operation("api/v1/chatbot/message", "Process Chat Message", conversation_id=conversation_id):
         user = await user_service.get_current_user(token)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        # Process message and get response
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication credentials")
+
+        conversation = await chatbot_service.get_conversation(user.id, conversation_id)
+        if not conversation:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
+
         response = await chatbot_service.process_message(
             user_id=user.id,
             conversation_id=conversation_id,
             message=message
         )
-        
-        # Schedule background tasks (e.g., update analytics, log interaction)
-        background_tasks.add_task(
-            chatbot_service.log_interaction,
-            user_id=user.id,
-            conversation_id=conversation_id,
-            message=message,
-            response=response
-        )
-        
+
+        # Background logging task
+        background_tasks.add_task(chatbot_service.log_interaction, user.id, conversation_id, message, response)
+
         return response
 
-@router.get("/{conversation_id}",
+# 📌 Get Conversation History
+@router.get(
+    "/{conversation_id}",
     response_model=Conversation,
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))])
+    dependencies=[Depends(RateLimiter(requests_per_minute=30))],
+    summary="Get Conversation History"
+)
 @cache(expire=60)  # Cache for 1 minute
-async def get_conversation(
-    conversation_id: str,
-    token: str = Depends(oauth2_scheme)
-):
-    """
-    Retrieve conversation history and context.
-    """
-    async with track_operation(
-        "api/v1/chatbot/conversation",
-        "Get Conversation",
-        conversation_id=conversation_id
-    ):
+async def get_conversation(conversation_id: str, token: str = Depends(oauth2_scheme)):
+    """Retrieve chatbot conversation history and context."""
+    async with track_operation("api/v1/chatbot/conversation", "Get Conversation", conversation_id=conversation_id):
         user = await user_service.get_current_user(token)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        conversation = await chatbot_service.get_conversation(
-            user_id=user.id,
-            conversation_id=conversation_id
-        )
-        
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication credentials")
+
+        conversation = await chatbot_service.get_conversation(user.id, conversation_id)
         if not conversation:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversation not found"
-            )
-        
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
+
         return conversation
 
-@router.post("/conversations",
+# 📌 Create a New Conversation
+@router.post(
+    "/conversations",
     response_model=Conversation,
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))])
+    dependencies=[Depends(RateLimiter(requests_per_minute=30))],
+    summary="Create a New Conversation"
+)
 async def create_conversation(
-    initial_context: Optional[Dict[str, Any]] = None,
+    initial_context: Optional[Dict[str, Any]] = Query(None, description="Initial context for the conversation"),
     token: str = Depends(oauth2_scheme)
 ):
-    """
-    Create a new conversation with optional initial context.
-    """
+    """Create a new chatbot conversation for the user."""
     async with track_operation("api/v1/chatbot/conversations", "Create Conversation"):
         user = await user_service.get_current_user(token)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        conversation = await chatbot_service.create_conversation(
-            user_id=user.id,
-            initial_context=initial_context or {}
-        )
-        return conversation
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication credentials")
 
-@router.get("/conversations",
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))])
-@cache(expire=300)  # Cache for 5 minutes
-async def list_conversations(
-    token: str = Depends(oauth2_scheme),
-    limit: int = 10,
-    offset: int = 0
-):
-    """
-    List recent conversations for the user.
-    """
-    async with track_operation("api/v1/chatbot/conversations", "List Conversations"):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        conversations = await chatbot_service.list_conversations(
-            user_id=user.id,
-            limit=limit,
-            offset=offset
-        )
-        return conversations
+        return await chatbot_service.create_conversation(user.id, initial_context or {})
 
-@router.post("/{conversation_id}/context",
-    response_model=Conversation,
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))])
-async def update_conversation_context(
-    conversation_id: str,
-    context_updates: Dict[str, Any],
-    token: str = Depends(oauth2_scheme)
-):
-    """
-    Update the context for an existing conversation.
-    """
-    async with track_operation(
-        "api/v1/chatbot/context",
-        "Update Context",
-        conversation_id=conversation_id
-    ):
-        user = await user_service.get_current_user(token)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        conversation = await chatbot_service.update_context(
-            user_id=user.id,
-            conversation_id=conversation_id,
-            context_updates=context_updates
-        )
-        
-        if not conversation:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversation not found"
-            )
-        
-        return conversation
-
-@router.post("/{conversation_id}/feedback",
-    dependencies=[Depends(RateLimiter(requests_per_minute=30))])
+# 📌 Submit Feedback for a Chat Message
+@router.post(
+    "/{conversation_id}/feedback",
+    dependencies=[Depends(RateLimiter(requests_per_minute=30))],
+    summary="Submit Feedback"
+)
 async def submit_feedback(
     conversation_id: str,
     message_id: str,
     feedback: Dict[str, Any],
     token: str = Depends(oauth2_scheme)
 ):
-    """
-    Submit feedback for a specific message in a conversation.
-    """
-    async with track_operation(
-        "api/v1/chatbot/feedback",
-        "Submit Feedback",
-        conversation_id=conversation_id,
-        message_id=message_id
-    ):
+    """Submit feedback for a chatbot message."""
+    async with track_operation("api/v1/chatbot/feedback", "Submit Feedback", conversation_id=conversation_id, message_id=message_id):
         user = await user_service.get_current_user(token)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        await chatbot_service.submit_feedback(
-            user_id=user.id,
-            conversation_id=conversation_id,
-            message_id=message_id,
-            feedback=feedback
-        )
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication credentials")
+
+        await chatbot_service.submit_feedback(user.id, conversation_id, message_id, feedback)
         return {"status": "success", "message": "Feedback submitted successfully"}
 
-@router.delete("/{conversation_id}",
-    dependencies=[Depends(RateLimiter(requests_per_minute=10))])
-async def delete_conversation(
-    conversation_id: str,
-    token: str = Depends(oauth2_scheme)
-):
-    """
-    Delete a conversation and its associated data.
-    """
-    async with track_operation(
-        "api/v1/chatbot/delete",
-        "Delete Conversation",
-        conversation_id=conversation_id
-    ):
+# 📌 Delete a Conversation
+@router.delete(
+    "/{conversation_id}",
+    dependencies=[Depends(RateLimiter(requests_per_minute=10))],
+    summary="Delete a Conversation"
+)
+async def delete_conversation(conversation_id: str, token: str = Depends(oauth2_scheme)):
+    """Delete a chatbot conversation and its associated data."""
+    async with track_operation("api/v1/chatbot/delete", "Delete Conversation", conversation_id=conversation_id):
         user = await user_service.get_current_user(token)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        
-        success = await chatbot_service.delete_conversation(
-            user_id=user.id,
-            conversation_id=conversation_id
-        )
-        
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication credentials")
+
+        success = await chatbot_service.delete_conversation(user.id, conversation_id)
         if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversation not found"
-            )
-        
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
+
         return {"status": "success", "message": "Conversation deleted successfully"}
