@@ -1,21 +1,33 @@
-# Core dependencies
+# Core Dependencies
+fastapi>=0.95.0
+uvicorn>=0.21.0
+pydantic>=2.0.0
+sqlmodel>=0.0.8
+
+# Database
+psycopg2-binary>=2.9.6
+alembic>=1.11.0
+
+# AI/ML
+tensorflow>=2.13.0
+scikit-learn>=1.3.0
+pandas>=2.0.0
+
+# Scraping
+aiohttp>=3.8.5
+beautifulsoup4>=4.12.0
+
+# Security
+python-jose>=3.3.0
+passlib>=1.7.4
+python-multipart>=0.0.6
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.1
+
+# Utilities
 python-dotenv>=1.0.0
-pyyaml>=6.0.1
-requests>=2.31.0
-
-# AI/ML dependencies
-torch>=2.2.0
-transformers>=4.36.2
-pandas>=2.1.4
-numpy>=1.24.3
-
-# Testing dependencies
-pytest>=7.4.4
-pytest-cov>=4.1.0
-pytest-mock>=3.12.0
-
-# Development dependencies
-black>=23.12.1
-isort>=5.13.2
-flake8>=7.0.0
-mypy>=1.8.0
+redis>=4.6.0
+celery>=5.3.1
