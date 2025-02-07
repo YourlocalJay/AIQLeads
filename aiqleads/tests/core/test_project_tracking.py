@@ -1,170 +1,129 @@
-"""Unit tests for project tracking system."""
-
-import os
-import json
+"""
+Test suite for the project tracking functionality.
+"""
 import pytest
-import shutil
+from unittest.mock import patch, MagicMock
 from datetime import datetime
-from typing import Dict
-from pathlib import Path
+from aiqleads.core.project_tracking import ProjectTracker
 
-from aiqleads.core.project_tracking import ProjectTracker, get_tracker
+@pytest.fixture
+def tracker():
+    """Create a ProjectTracker instance for testing."""
+    return ProjectTracker()
 
-class TestProjectTracking:
-    @pytest.fixture
-    def tracker(self, tmp_path) -> ProjectTracker:
-        """Create a fresh tracker instance for each test."""
-        # Use temporary directory for tests
-        test_base = tmp_path / "aiqleads"
-        os.makedirs(test_base)
-        return ProjectTracker(base_path=str(test_base))
-        
-    def test_singleton_pattern(self):
-        """Test that get_tracker returns the same instance."""
-        tracker1 = get_tracker()
-        tracker2 = get_tracker()
-        assert tracker1 is tracker2
-        
-    def test_component_registration(self, tracker):
-        """Test component registration functionality."""
-        # Test valid component registration
-        success = tracker.register_component(
-            "core/test_component.py",
-            "core",
-            "Test component"
-        )
-        assert success
-        
-        # Verify component was registered
-        component = tracker.get_component_status("core/test_component.py")
-        assert component is not None
-        assert component["type"] == "core"
-        assert component["description"] == "Test component"
-        assert component["status"] == "registered"
-        
-        # Test invalid path
-        success = tracker.register_component(
-            "../invalid/path.py",
-            "core",
-            "Invalid component"
-        )
-        assert not success
-        
-    def test_edge_cases(self, tracker):
-        """Test edge cases and error conditions."""
-        # Test empty paths
-        assert not tracker.register_component("", "core", "Empty path")
-        assert not tracker.register_component(" ", "core", "Space path")
-        
-        # Test path traversal attempts
-        assert not tracker.register_component("../../../etc/passwd", "core")
-        assert not tracker.register_component("core/../../../etc/passwd", "core")
-        assert not tracker.register_component("/etc/passwd", "core")
-        
-        # Test duplicate registration
-        assert tracker.register_component("core/test.py", "core")
-        assert not tracker.register_component("core/test.py", "core")
-        
-        # Test missing status updates
-        assert not tracker.update_component_status("missing.py", "active")
-        
-        # Test invalid component types
-        assert not tracker.register_component("core/test2.py", "invalid_type")
-        
-        # Test special characters in paths
-        assert not tracker.register_component("core/test;.py", "core")
-        assert not tracker.register_component("core/test*.py", "core")
-        
-        # Test long paths
-        long_path = "core/" + "a" * 255 + ".py"
-        assert not tracker.register_component(long_path, "core")
-        
-        # Test Unicode paths
-        assert not tracker.register_component("core/测试.py", "core")
-        
-    def test_state_persistence(self, tracker, tmp_path):
-        """Test state saving and loading."""
-        # Register test component
-        tracker.register_component("core/persist_test.py", "core")
-        
-        # Save state
-        assert tracker._save_state()
-        
-        # Create new tracker instance
-        new_tracker = ProjectTracker(base_path=str(tmp_path / "aiqleads"))
-        
-        # Verify state was loaded
-        assert "core/persist_test.py".replace("/", ".") in new_tracker.components
-        
-        # Test corrupt state files
-        status_file = tmp_path / "aiqleads/data/project_status.json"
-        with open(status_file, 'w') as f:
-            f.write("invalid json")
-            
-        # Should handle corrupt files gracefully
-        newer_tracker = ProjectTracker(base_path=str(tmp_path / "aiqleads"))
-        assert newer_tracker.current_status["status"] == "initialized"
-        
-    def test_concurrent_access(self, tracker):
-        """Test concurrent component access."""
-        # Register initial component
-        assert tracker.register_component("core/concurrent.py", "core")
-        
-        # Simulate concurrent updates
-        tracker1 = ProjectTracker(base_path=tracker.base_path)
-        tracker2 = ProjectTracker(base_path=tracker.base_path)
-        
-        # Both try to update same component
-        assert tracker1.update_component_status("core/concurrent.py", "active")
-        assert tracker2.update_component_status("core/concurrent.py", "inactive")
-        
-        # Verify last write wins
-        component = tracker.get_component_status("core/concurrent.py")
-        assert component["status"] == "inactive"
-        
-    def test_error_recovery(self, tracker, tmp_path):
-        """Test error recovery mechanisms."""
-        # Register test component
-        tracker.register_component("core/recovery_test.py", "core")
-        
-        # Corrupt data directory
-        shutil.rmtree(os.path.join(tracker.base_path, "data"))
-        
-        # Should recreate directory and continue
-        assert tracker.register_component("core/another_test.py", "core")
-        
-        # Verify data directory was recreated
-        assert os.path.exists(os.path.join(tracker.base_path, "data"))
-        
-    def test_status_history(self, tracker):
-        """Test status history management."""
-        # Create more than 10 status updates
-        component_id = "core/history_test.py"
-        tracker.register_component(component_id, "core")
-        
-        for i in range(15):
-            tracker.update_component_status(
-                component_id,
-                f"status_{i}"
-            )
-            
-        # Verify only last 10 updates kept
-        status_data = tracker.export_status("test_status.json")
-        assert len(tracker.status_history) <= 10
-        
-        # Verify chronological order
-        for i in range(1, len(tracker.status_history)):
-            assert tracker.status_history[i]["timestamp"] > \
-                   tracker.status_history[i-1]["timestamp"]
-                   
-    @pytest.mark.parametrize("test_input,expected", [
-        ("core/valid.py", True),
-        ("../invalid.py", False),
-        ("core/../invalid.py", False),
-        ("invalid_dir/test.py", False),
-        ("core/test/valid.py", True),
-        ("core\\windows\\path.py", True),  # Windows paths
-    ])
-    def test_path_validation(self, tracker, test_input, expected):
-        """Test path validation with various inputs."""
-        assert tracker._validate_path(test_input) == expected
+def test_tracker_initialization(tracker):
+    """Test that ProjectTracker initializes correctly."""
+    assert tracker is not None
+    assert tracker.status == "initialized"
+    assert isinstance(tracker.start_time, datetime)
+
+def test_start_tracking(tracker):
+    """Test starting a new tracking session."""
+    tracker.start_tracking("test_component")
+    assert tracker.current_component == "test_component"
+    assert tracker.status == "active"
+
+def test_pause_tracking(tracker):
+    """Test pausing the tracking session."""
+    tracker.start_tracking("test_component")
+    tracker.pause_tracking()
+    assert tracker.status == "paused"
+    assert tracker.pause_time is not None
+
+def test_resume_tracking(tracker):
+    """Test resuming a paused tracking session."""
+    tracker.start_tracking("test_component")
+    tracker.pause_tracking()
+    tracker.resume_tracking()
+    assert tracker.status == "active"
+    assert tracker.pause_time is None
+
+def test_stop_tracking(tracker):
+    """Test stopping the tracking session."""
+    tracker.start_tracking("test_component")
+    summary = tracker.stop_tracking()
+    assert tracker.status == "completed"
+    assert isinstance(summary, dict)
+    assert "duration" in summary
+    assert "component" in summary
+
+def test_get_current_status(tracker):
+    """Test retrieving the current tracking status."""
+    status = tracker.get_current_status()
+    assert isinstance(status, dict)
+    assert "status" in status
+    assert "start_time" in status
+
+@pytest.mark.parametrize("invalid_component", [None, "", " ", 123])
+def test_invalid_component_name(tracker, invalid_component):
+    """Test handling of invalid component names."""
+    with pytest.raises(ValueError):
+        tracker.start_tracking(invalid_component)
+
+def test_tracking_multiple_components(tracker):
+    """Test tracking multiple components sequentially."""
+    components = ["component1", "component2", "component3"]
+    summaries = []
+    
+    for component in components:
+        tracker.start_tracking(component)
+        summary = tracker.stop_tracking()
+        summaries.append(summary)
+    
+    assert len(summaries) == len(components)
+    assert all(s["status"] == "completed" for s in summaries)
+
+@patch('aiqleads.core.project_tracking.logging')
+def test_logging_functionality(mock_logging, tracker):
+    """Test that tracking events are properly logged."""
+    tracker.start_tracking("test_component")
+    tracker.stop_tracking()
+    
+    assert mock_logging.info.called
+    assert mock_logging.debug.called
+
+def test_error_handling(tracker):
+    """Test error handling in tracking operations."""
+    # Test stopping without starting
+    with pytest.raises(RuntimeError):
+        tracker.stop_tracking()
+    
+    # Test resuming without pausing
+    tracker.start_tracking("test_component")
+    with pytest.raises(RuntimeError):
+        tracker.resume_tracking()
+
+def test_duration_calculation(tracker):
+    """Test accurate duration calculation."""
+    tracker.start_tracking("test_component")
+    with patch('aiqleads.core.project_tracking.datetime') as mock_datetime:
+        # Mock a 1-hour duration
+        mock_datetime.now.return_value = tracker.start_time.replace(hour=tracker.start_time.hour + 1)
+        summary = tracker.stop_tracking()
+        assert summary["duration"].total_seconds() == 3600
+
+def test_component_history(tracker):
+    """Test tracking history for multiple components."""
+    components = ["component1", "component2"]
+    
+    for component in components:
+        tracker.start_tracking(component)
+        tracker.stop_tracking()
+    
+    history = tracker.get_tracking_history()
+    assert len(history) == len(components)
+    assert all(h["component"] in components for h in history)
+
+@pytest.mark.parametrize("status_change", [
+    ("start_tracking", "active"),
+    ("pause_tracking", "paused"),
+    ("stop_tracking", "completed")
+])
+def test_status_transitions(tracker, status_change):
+    """Test all possible status transitions."""
+    action, expected_status = status_change
+    
+    tracker.start_tracking("test_component")
+    if action != "start_tracking":
+        getattr(tracker, action)()
+        assert tracker.status == expected_status
