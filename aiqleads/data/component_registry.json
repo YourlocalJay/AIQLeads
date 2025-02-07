@@ -1,0 +1,24 @@
+{
+  "version": "0.1.0",
+  "last_update": "2025-02-06T06:50:00Z",
+  "components": {
+    "core": {
+      "project_tracking": {
+        "path": "aiqleads/core/project_tracking.py",
+        "status": "active",
+        "last_modified": "2025-02-06T06:50:00Z",
+        "dependencies": [
+          "utils.logging"
+        ]
+      }
+    },
+    "utils": {
+      "logging": {
+        "path": "aiqleads/utils/logging.py",
+        "status": "active",
+        "last_modified": "2025-02-06T06:50:00Z",
+        "dependencies": []
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 """
-Test runner for project tracking system.
+Test runner for AIQLeads project tracking system.
 """
 
 import os
@@ -46,8 +46,12 @@ def test_project_tracking():
             status = tracker.get_component_status(path)
             assert status["status"] == "active", f"Unexpected status for {path}"
             
+        # Test path validation
+        assert not tracker._validate_path("../invalid/path.py")
+        assert tracker._validate_path("core/valid.py")
+            
         # Export test results
-        output_path = os.path.join(project_root, "aiqleads", "tests", "tracking_test_results.json")
+        output_path = os.path.join(project_root, "data", "tracking_test_results.json")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
         success = tracker.export_status(output_path)
@@ -71,5 +75,12 @@ def test_project_tracking():
         return False
 
 if __name__ == "__main__":
-    success = test_project_tracking()
-    sys.exit(0 if success else 1)
+    try:
+        success = test_project_tracking()
+        sys.exit(0 if success else 1)
+    except KeyboardInterrupt:
+        logger.info("Testing interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Testing failed with error: {e}")
+        sys.exit(1)
