@@ -1,24 +1,77 @@
 {
-  "version": "0.1.0",
-  "last_update": "2025-02-06T06:50:00Z",
   "components": {
     "core": {
       "project_tracking": {
         "path": "aiqleads/core/project_tracking.py",
+        "dependencies": ["utils.logging"],
+        "tests": ["tests.core.test_project_tracking"],
+        "documentation": ["docs/TRACKING.md"],
         "status": "active",
-        "last_modified": "2025-02-06T06:50:00Z",
-        "dependencies": [
-          "utils.logging"
-        ]
+        "version": "0.1.0",
+        "maintainers": ["YourlocalJay"],
+        "last_updated": "2025-02-07T01:31:00Z",
+        "metrics": {
+          "test_coverage": 100,
+          "complexity": "medium",
+          "dependencies_count": 1
+        }
       }
     },
     "utils": {
       "logging": {
         "path": "aiqleads/utils/logging.py",
+        "dependencies": [],
+        "tests": ["tests.utils.test_logging"],
+        "documentation": ["docs/TRACKING.md"],
         "status": "active",
-        "last_modified": "2025-02-06T06:50:00Z",
-        "dependencies": []
+        "version": "0.1.0",
+        "maintainers": ["YourlocalJay"],
+        "last_updated": "2025-02-07T01:31:00Z",
+        "metrics": {
+          "test_coverage": 100,
+          "complexity": "low",
+          "dependencies_count": 0
+        }
+      }
+    },
+    "tests": {
+      "core": {
+        "test_project_tracking": {
+          "path": "aiqleads/tests/core/test_project_tracking.py",
+          "type": "unit_test",
+          "coverage": 100,
+          "status": "active",
+          "last_run": "2025-02-07T01:31:00Z"
+        }
+      },
+      "utils": {
+        "test_logging": {
+          "path": "aiqleads/tests/utils/test_logging.py",
+          "type": "unit_test",
+          "coverage": 100,
+          "status": "active",
+          "last_run": "2025-02-07T01:31:00Z"
+        }
+      }
+    },
+    "docs": {
+      "tracking": {
+        "path": "aiqleads/docs/TRACKING.md",
+        "type": "markdown",
+        "status": "active",
+        "last_updated": "2025-02-07T01:31:00Z",
+        "related_components": [
+          "core.project_tracking",
+          "utils.logging"
+        ]
       }
     }
+  },
+  "metadata": {
+    "last_updated": "2025-02-07T01:31:00Z",
+    "version": "0.1.0",
+    "total_components": 5,
+    "active_components": 5,
+    "test_coverage_average": 100
   }
 }
