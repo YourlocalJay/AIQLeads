@@ -1,24 +1,47 @@
 {
-  "version": "0.1.0",
-  "last_update": "2025-02-06T06:50:00Z",
-  "components": {
-    "core": {
-      "project_tracking": {
-        "path": "aiqleads/core/project_tracking.py",
-        "status": "active",
-        "last_modified": "2025-02-06T06:50:00Z",
-        "dependencies": [
-          "utils.logging"
-        ]
-      }
+  "backend/main.py": {
+    "type": "core",
+    "definition": {
+      "purpose": "FastAPI Application Entry Point",
+      "dependencies": ["fastapi", "uvicorn"],
+      "critical": true
     },
-    "utils": {
-      "logging": {
-        "path": "aiqleads/utils/logging.py",
-        "status": "active",
-        "last_modified": "2025-02-06T06:50:00Z",
-        "dependencies": []
-      }
-    }
+    "registered_at": "2025-02-07T20:50:00Z"
+  },
+  "backend/routes/auth.py": {
+    "type": "api",
+    "definition": {
+      "purpose": "Authentication & Authorization",
+      "dependencies": ["jwt", "passlib"],
+      "critical": true
+    },
+    "registered_at": "2025-02-07T20:50:00Z"
+  },
+  "ai_models/lead_scoring.py": {
+    "type": "ai",
+    "definition": {
+      "purpose": "Lead Scoring System",
+      "dependencies": ["openai", "deepseek-ai"],
+      "critical": true
+    },
+    "registered_at": "2025-02-07T20:50:00Z"
+  },
+  "ai_models/chatbot.py": {
+    "type": "ai",
+    "definition": {
+      "purpose": "Mistral-based Agent Chatbot",
+      "dependencies": ["mistralai", "langchain"],
+      "critical": true
+    },
+    "registered_at": "2025-02-07T20:50:00Z"
+  },
+  "scraping/fsbo_scraper.py": {
+    "type": "scraper",
+    "definition": {
+      "purpose": "FSBO Website Scraping",
+      "dependencies": ["aiohttp", "beautifulsoup4"],
+      "critical": true
+    },
+    "registered_at": "2025-02-07T20:50:00Z"
   }
 }
