@@ -2,151 +2,163 @@
 
 This document outlines the standard operating procedures for managing chat interactions within the AIQLeads platform.
 
-## Starting a New Chat
+## Chat Initialization
 
-### Prerequisites
-- Verified user account
-- Assigned access level
-- Active session token
+### Starting a New Chat
 
-### Initialization Steps
-1. Load user context and preferences
-2. Initialize AI model with appropriate parameters
-3. Set up logging and monitoring
-4. Establish secure WebSocket connection
+1. Share Continuation Message
+   - Use the continuation message from the previous chat session
+   - Ensure all context is preserved
 
-### Initial Greeting
-- System generates standardized welcome message
-- Include user's name and any relevant context
-- Present initial menu of options or direct query prompt
+2. Required File Review Sequence
+   ```markdown
+   1. aiqleads/docs/CONTINUATION_PROCEDURE.md
+   2. aiqleads/docs/UNIVERSAL_PROMPT.md
+   3. docs/PROJECT_STRUCTURE.md
+   4. REPOSITORY_STATUS.md
+   ```
 
-## Active Chat Management
+3. Initial Status Check
+   ```python
+   from aiqleads.core.project_tracking import ProjectTracker
+   tracker = ProjectTracker()
+   status_report = tracker.generate_report()
+   ```
 
-### Lead Qualification Process
-1. Gather basic information
-   - Company name
-   - Contact details
-   - Industry sector
-   - Current needs/pain points
+4. Structure Verification
+   ```python
+   # Verify no duplicate implementations exist
+   tracker.check_duplicate_functionality(
+       component_type="your_component_type",
+       component_def={"purpose": "your_purpose"}
+   )
+   ```
 
-2. Dynamic Questioning
-   - AI adapts questions based on previous responses
-   - Focus on qualifying criteria
-   - Track engagement metrics
+5. Development Initialization
+   - Update component status to "In Progress"
+   - Follow established structure rules
+   - Initialize change tracking
+   - Verify documentation requirements
 
-3. Real-time Analysis
-   - Score leads based on responses
-   - Flag high-priority opportunities
-   - Identify necessary follow-up actions
+### Critical Rules
+- All changes must be contained within the aiqleads/ directory
+- Core project structure must remain unmodified
+- No creation of alternate versions of existing files
+- Use project_tracking.py for all status updates
+- All paths must be validated against PROJECT_STRUCTURE.md
 
-### Chat Flow Guidelines
-- Maintain professional tone
-- Use clear, concise language
-- Follow conversation branching logic
-- Implement appropriate fallbacks for unclear responses
-- Handle sensitive information according to policy
+## Chat Termination
 
-## Closing Chats
+### Ending a Chat Session
 
-### Standard Closing Procedure
-1. Summarize key points discussed
-2. Confirm next steps
-3. Provide relevant resources or documentation
-4. Save chat transcript with metadata
-5. Update lead status in CRM
+1. Trigger Commands
+   - "End of chat"
+   - "End chat"
+   - "End session"
 
-### Emergency Closing Procedure
-1. Save current state
-2. Log incident details
-3. Notify appropriate team members
-4. Generate incident report
-5. Follow up with user if necessary
+2. Status Updates
+   ```python
+   # Update status of worked components
+   tracker.update_status(
+       component_id="current/component/path",
+       status="current_status",
+       notes="End of chat status + next steps"
+   )
+   ```
 
-### Post-Chat Processing
-1. Generate chat summary
-2. Update lead score
-3. Create follow-up tasks
-4. Archive chat history
-5. Update analytics
+3. Session Documentation
+   ```markdown
+   ### [Current Date]
+   #### Session Summary
+   - Completed: [List completed items]
+   - Current State: [State of in-progress items]
+   - Next Steps: [Immediate next tasks]
+   - Known Issues: [Any outstanding issues]
+   ```
 
-## Chat History Management
+4. Continuation Message Generation
+   ```markdown
+   I'm continuing work on the AIQLeads project. IMPORTANT: This is an existing project with an established structure - do not create new root directories or modify the structure. All changes must be made within the existing structure.
 
-### Documentation Requirements
-- Chat ID
-- Timestamp
-- Participant details
-- Full transcript
-- Associated metadata
-- Lead qualification score
-- Action items
-- Follow-up status
+   First, please review these files in order:
+   1. aiqleads/docs/CONTINUATION_PROCEDURE.md
+   2. aiqleads/docs/UNIVERSAL_PROMPT.md
+   3. docs/PROJECT_STRUCTURE.md
+   4. REPOSITORY_STATUS.md
 
-### Retention Policy
-- Active chats: 30 days
-- Qualified leads: 1 year
-- Archived chats: 7 years
-- Compliance data: As per regulatory requirements
+   CRITICAL RULES:
+   - All changes must be inside the aiqleads/ directory
+   - Never modify the core project structure
+   - Never create alternate versions of existing files
+   - Use project_tracking.py for all status updates
+   - Always validate paths against PROJECT_STRUCTURE.md
 
-### Access Control
-- Define role-based access levels
-- Implement audit logging
-- Maintain access history
-- Regular access review
+   Repository Information:
+   * GitHub Repository: https://github.com/YourlocalJay/AIQLeads
+   * Owner: YourlocalJay
+   * Access Type: Private repository
+   * Branch: [Current Branch]
 
-## Quality Assurance
+   Current Status:
+   - Branch: [Current Branch]
+   - Last Component: [Last worked on component]
+   - Status: [Current status]
+   - Next Task: [Next planned task]
 
-### Monitoring
-- Real-time chat monitoring
-- Performance metrics tracking
-- Error rate analysis
-- Response time monitoring
-- User satisfaction tracking
+   Recent Changes:
+   1. [Most recent change]
+   2. [Second most recent change]
+   3. [Third most recent change]
 
-### Regular Reviews
-- Weekly performance analysis
-- Monthly trend analysis
-- Quarterly procedure updates
-- Annual policy review
+   Development Focus:
+   - Primary Goal: [Goal]
+   - Components: [Components]
+   - Requirements: [Requirements]
+   ```
 
-## Integration Points
+## Tracking and Validation
 
-### CRM Integration
-- Automatic lead creation
-- Status updates
-- Activity logging
-- Follow-up task creation
+### Status Tracking
+- Use ProjectTracker for all status updates
+- Document all changes in real-time
+- Maintain clear next steps
+- Track known issues
 
-### Analytics Integration
-- Conversion tracking
-- Performance metrics
-- User behavior analysis
-- ROI calculation
+### Structure Validation
+- Verify paths against PROJECT_STRUCTURE.md
+- Prevent duplicate implementations
+- Maintain directory structure
+- Follow established naming conventions
 
-## Troubleshooting
+## Error Prevention
 
 ### Common Issues
-- Connection problems
-- Authentication errors
-- Response delays
-- Data synchronization issues
+1. Loss of context between chats
+2. Inconsistent file locations
+3. Duplicate implementations
+4. Structure modification
+5. Status tracking gaps
 
-### Resolution Steps
-1. Identify issue type
-2. Check system status
-3. Apply standard fixes
-4. Escalate if necessary
-5. Document resolution
+### Prevention Measures
+1. Consistent file review order
+2. Clear structure rules
+3. Continuous status tracking
+4. Detailed continuation context
+5. Documentation preservation
 
-## Updates and Maintenance
+## Documentation Requirements
 
-### Regular Updates
-- Weekly system checks
-- Monthly performance optimization
-- Quarterly procedure reviews
-- Annual policy updates
+### Session Documentation
+- Date and time stamps
+- Completed tasks
+- Current state
+- Next steps
+- Known issues
+- Status updates
 
-### Change Management
-- Document all changes
-- Version control
-- Change notification
-- Training updates
+### Change Tracking
+- Component modifications
+- Status updates
+- Structure validations
+- Issue documentation
+- Next steps definition
