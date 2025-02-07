@@ -1,21 +1,22 @@
-from src.aggregator.base_scraper import BaseScraper
-from src.schemas.lead_schema import LeadCreate
-from src.aggregator.exceptions import ScraperError, ParseError, NetworkError
-from typing import List, Dict, Optional, Any
 import asyncio
 import logging
-import aiohttp
-from datetime import datetime
+from typing import List, Dict, Optional, Any
 from urllib.parse import urljoin
+import aiohttp
 import phonenumbers
 from email_validator import validate_email, EmailNotValidError
+from datetime import datetime
+
+from aiqleads.scrapers.base_scraper import BaseScraper
+from aiqleads.schemas.lead_schema import LeadCreate
+from aiqleads.scrapers.exceptions import ScraperError, ParseError, NetworkError
+from aiqleads.utils.request_fingerprint import RequestFingerprinter
 
 logger = logging.getLogger(__name__)
 
-
 class CraigslistScraper(BaseScraper):
     """
-    Enhanced Craigslist scraper with full API integration and robust error handling.
+    Optimized Craigslist Scraper for extracting real estate leads.
     """
 
     BASE_URL = "https://api.craigslist.org/v1/"
@@ -31,26 +32,26 @@ class CraigslistScraper(BaseScraper):
         api_key: Optional[str] = None,
     ):
         """
-        Initialize Craigslist scraper with configurable parameters.
+        Initialize Craigslist scraper with API key support.
 
         Args:
-            rate_limit: Maximum requests per time window
+            rate_limit: Requests per time window
             time_window: Time window in seconds
-            api_key: Optional API key for authentication
+            api_key: Optional API key for Craigslist API
         """
         super().__init__(rate_limit, time_window)
         self.api_key = api_key
         self.session = None
 
     async def initialize(self):
-        """Initialize aiohttp session for requests."""
+        """Initialize aiohttp session for async requests."""
         if not self.session:
             self.session = aiohttp.ClientSession(
                 headers=self._get_headers(), timeout=aiohttp.ClientTimeout(total=30)
             )
 
     async def cleanup(self):
-        """Clean up resources."""
+        """Close aiohttp session."""
         if self.session:
             await self.session.close()
             self.session = None
@@ -66,63 +67,51 @@ class CraigslistScraper(BaseScraper):
         Search for real estate leads on Craigslist.
 
         Args:
-            location: Target location (city, state, or postal code)
+            location: Target location
             radius_km: Search radius in kilometers
             category: Listing category
             **kwargs: Additional search parameters
 
         Returns:
-            List of validated LeadCreate instances
+            List[LeadCreate]: Extracted and validated leads
         """
         try:
             await self.initialize()
-            logger.info(
-                f"Starting Craigslist search: location={location}, radius={radius_km}km"
-            )
+            logger.info(f"Searching Craigslist: location={location}, radius={radius_km}km")
 
             await self.rate_limiter.acquire()
-            leads = []
             retry_count = 0
+            leads = []
 
             while retry_count < self.MAX_RETRIES:
                 try:
-                    raw_listings = await self._fetch_listings(
-                        location, radius_km, category
-                    )
+                    raw_listings = await self._fetch_listings(location, radius_km, category)
                     parsed_leads = await self._process_listings(raw_listings)
                     leads.extend(parsed_leads)
 
                     await self.log_scrape_activity(len(leads))
-                    logger.info(f"Successfully extracted {len(leads)} leads")
+                    logger.info(f"Extracted {len(leads)} leads successfully.")
                     return leads
 
                 except NetworkError as e:
                     retry_count += 1
                     if retry_count >= self.MAX_RETRIES:
                         raise
-                    logger.warning(
-                        f"Retry {retry_count}/{self.MAX_RETRIES} after error: {e}"
-                    )
+                    logger.warning(f"Retry {retry_count}/{self.MAX_RETRIES} after error: {e}")
                     await asyncio.sleep(self.RETRY_DELAY * retry_count)
 
         except Exception as e:
             self.add_error(
                 "search_error",
                 str(e),
-                {
-                    "location": location,
-                    "radius_km": radius_km,
-                    "timestamp": datetime.utcnow(),
-                },
+                {"location": location, "radius_km": radius_km, "timestamp": datetime.utcnow()},
             )
             logger.error(f"Craigslist search failed: {str(e)}", exc_info=True)
             raise ScraperError(f"Craigslist search failed: {str(e)}")
         finally:
             await self.cleanup()
 
-    async def extract_contact_info(
-        self, listing_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def extract_contact_info(self, listing_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Extract and validate contact information from listing data.
 
@@ -143,9 +132,8 @@ class CraigslistScraper(BaseScraper):
             }
 
             if not contact_info["email"] and not contact_info["phone"]:
-                raise ParseError("Neither email nor phone available")
+                raise ParseError("Missing both email and phone.")
 
-            # Validate and normalize contact info
             if contact_info["email"]:
                 contact_info["email"] = self._validate_email(contact_info["email"])
             if contact_info["phone"]:
@@ -155,12 +143,10 @@ class CraigslistScraper(BaseScraper):
 
         except Exception as e:
             self.add_error("contact_extraction_error", str(e), listing_data)
-            logger.error(f"Contact extraction failed: {str(e)}")
+            logger.error(f"Failed to extract contact info: {str(e)}")
             raise ParseError(f"Contact extraction failed: {str(e)}")
 
-    async def _fetch_listings(
-        self, location: str, radius_km: float, category: str
-    ) -> List[Dict[str, Any]]:
+    async def _fetch_listings(self, location: str, radius_km: float, category: str) -> List[Dict[str, Any]]:
         """
         Fetch listings from Craigslist API.
 
@@ -184,12 +170,8 @@ class CraigslistScraper(BaseScraper):
         try:
             async with self.session.get(endpoint, params=params) as response:
                 if response.status == 429:  # Rate limit exceeded
-                    retry_after = int(
-                        response.headers.get("Retry-After", self.RETRY_DELAY)
-                    )
-                    logger.warning(
-                        f"Rate limit exceeded. Waiting {retry_after} seconds"
-                    )
+                    retry_after = int(response.headers.get("Retry-After", self.RETRY_DELAY))
+                    logger.warning(f"Rate limit exceeded. Retrying in {retry_after} seconds.")
                     await asyncio.sleep(retry_after)
                     raise NetworkError("Rate limit exceeded")
 
@@ -240,24 +222,20 @@ class CraigslistScraper(BaseScraper):
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    @staticmethod
-    def _validate_email(email: str) -> str:
-        """Validate email format."""
+    def _validate_email(self, email: str) -> str:
+        """Validate and normalize email address."""
         try:
-            validated_email = validate_email(email).email
-            return validated_email
+            v = validate_email(email)
+            return v["email"]
         except EmailNotValidError as e:
-            raise ParseError(f"Invalid email: {email}") from e
+            raise ParseError(f"Invalid email address: {email}") from e
 
-    @staticmethod
-    def _normalize_phone(phone: str) -> str:
-        """Normalize phone number format."""
+    def _normalize_phone(self, phone: str) -> str:
+        """Normalize phone number to international format."""
         try:
-            parsed_phone = phonenumbers.parse(phone, "US")  # Default region: US
+            parsed_phone = phonenumbers.parse(phone, None)
             if not phonenumbers.is_valid_number(parsed_phone):
                 raise ParseError(f"Invalid phone number: {phone}")
-            return phonenumbers.format_number(
-                parsed_phone, phonenumbers.PhoneNumberFormat.E164
-            )
-        except phonenumbers.NumberParseException as e:
-            raise ParseError(f"Invalid phone number: {phone}") from e
+            return phonenumbers.format_number(parsed_phone, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
+        except phonenumbers.phonenumberutil.NumberParseException as e:
+            raise ParseError(f"Failed to parse phone number: {phone}") from e
