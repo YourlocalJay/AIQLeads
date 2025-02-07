@@ -1,12 +1,14 @@
-from src.aggregator.base_scraper import BaseScraper
-from src.schemas.lead_schema import LeadCreate
-from src.aggregator.exceptions import ScraperError, ParseError
-from typing import List
 import asyncio
 import logging
+from typing import List, Optional
+from urllib.parse import urlencode
+
+from aiqleads.scrapers.base_scraper import BaseScraper
+from aiqleads.schemas.lead_schema import LeadCreate
+from aiqleads.scrapers.exceptions import ScraperError, ParseError
+from aiqleads.utils.request_fingerprint import RequestFingerprinter
 
 logger = logging.getLogger(__name__)
-
 
 class AustinScraper(BaseScraper):
     """Scraper for extracting real estate leads from Austin and surrounding areas."""
@@ -34,12 +36,10 @@ class AustinScraper(BaseScraper):
             **kwargs: Additional search parameters.
 
         Returns:
-            List[LeadCreate]: A list of leads extracted and validated.
+            List[LeadCreate]: A list of validated leads extracted.
         """
         try:
-            logger.info(
-                f"Starting Austin search for location: {location}, radius: {radius_km} km"
-            )
+            logger.info(f"Starting Austin search for location: {location}, radius: {radius_km} km")
             await self.rate_limiter.acquire()
 
             # Gather listings for the main location and subregions
@@ -47,20 +47,17 @@ class AustinScraper(BaseScraper):
             if include_subregions:
                 locations_to_search.extend(self.SUBREGIONS)
 
-            all_leads = []
-            for loc in locations_to_search:
-                logger.info(f"Searching location: {loc}")
-                raw_listings = await self._mock_api_call(loc, radius_km)
-                leads = [self._parse_listing(listing) for listing in raw_listings]
-                all_leads.extend(leads)
-                logger.info(f"Extracted {len(leads)} leads from {loc}.")
+            all_leads = await asyncio.gather(*[self._fetch_listings(loc, radius_km) for loc in locations_to_search])
 
-            logger.info(f"Total leads extracted: {len(all_leads)}")
-            return all_leads
+            # Flatten list and remove empty results
+            extracted_leads = [lead for leads in all_leads for lead in leads if leads]
+            logger.info(f"Total leads extracted: {len(extracted_leads)}")
+
+            return extracted_leads
         except Exception as e:
             self.add_error("search_error", str(e))
-            logger.error(f"Austin scraper failed: {e}")
-            raise ScraperError("Austin scraper failed.")
+            logger.error(f"Austin scraper failed: {e}", exc_info=True)
+            raise ScraperError("Austin scraper failed.") from e
 
     async def validate_credentials(self) -> bool:
         """
@@ -85,43 +82,49 @@ class AustinScraper(BaseScraper):
         try:
             contact_info = {
                 "name": listing_data.get("agentName", "N/A"),
-                "email": listing_data.get("agentEmail", None),
-                "phone": listing_data.get("agentPhone", None),
+                "email": listing_data.get("agentEmail"),
+                "phone": listing_data.get("agentPhone"),
             }
             if not contact_info["phone"] and not contact_info["email"]:
                 raise ParseError("Missing both phone and email in contact info.")
             return contact_info
         except Exception as e:
             self.add_error("contact_extraction_error", str(e), listing_data)
-            logger.error(f"Failed to extract contact info: {e}")
-            raise ScraperError("Failed to extract contact info.")
+            logger.error(f"Failed to extract contact info: {e}", exc_info=True)
+            raise ScraperError("Failed to extract contact info.") from e
 
-    async def _mock_api_call(self, location: str, radius_km: float) -> List[dict]:
+    async def _fetch_listings(self, location: str, radius_km: float) -> List[LeadCreate]:
         """
-        Mock API call for testing.
+        Fetch listings asynchronously.
 
         Args:
             location (str): Target location.
             radius_km (float): Search radius in kilometers.
 
         Returns:
-            List[dict]: Simulated raw listing data.
+            List[LeadCreate]: Parsed and validated listings.
         """
-        await asyncio.sleep(1)
-        return [
-            {
-                "agentName": "Alice Johnson",
-                "agentEmail": "alice.johnson@example.com",
-                "agentPhone": "+3333333333",
-                "price": 700000,
-            },
-            {
-                "agentName": "Bob Carter",
-                "agentEmail": "bob.carter@example.com",
-                "agentPhone": "+4444444444",
-                "price": 800000,
-            },
-        ]
+        params = {
+            "location": location,
+            "radius": radius_km,
+            "type": "fsbo",
+            "sort": "newest",
+        }
+        url = f"{self.BASE_URL}?{urlencode(params)}"
+
+        response = await self.fetch(url)
+        if not response:
+            self.add_error("fetch_error", f"Failed to fetch listings for {location}")
+            logger.error(f"Failed to fetch listings for {location}")
+            return []
+
+        try:
+            listings = response.get("listings", [])
+            return [self._parse_listing(listing) for listing in listings]
+        except Exception as e:
+            self.add_error("parse_error", str(e), response)
+            logger.error(f"Parsing error: {e}", exc_info=True)
+            return []
 
     def _parse_listing(self, listing: dict) -> LeadCreate:
         """
@@ -139,7 +142,8 @@ class AustinScraper(BaseScraper):
                 email=listing.get("agentEmail"),
                 phone=listing.get("agentPhone"),
                 source="AustinRealEstate",
-                metadata={"price": listing.get("price"), "city": "Austin"},
+                metadata={"price": listing.get("price"), "city": listing.get("city", "Austin")},
             )
         except KeyError as e:
-            raise ParseError(f"Missing required field: {e}")
+            raise ParseError(f"Missing required field: {e}") from e
+
