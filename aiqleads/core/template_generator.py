@@ -15,11 +15,16 @@ class TemplateGenerator:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.base_dir = "aiqleads"
+        self.end_trigger = "End of chat"  # Updated trigger phrase
         self.templates = {
             "chat_end": self._load_template("chat_end"),
             "chat_start": self._load_template("chat_start"),
             "continuation": self._load_template("continuation")
         }
+        
+    def should_generate_end_sequence(self, message: str) -> bool:
+        """Check if message should trigger end sequence"""
+        return message.strip().lower() == self.end_trigger.lower()
         
     def generate_end_sequence(self, state: Dict[str, Any]) -> str:
         """Generate standardized end sequence using existing file structure"""
@@ -48,7 +53,7 @@ class TemplateGenerator:
                 "files": self._format_files_section()
             }
             
-            # Generate continuation prompt
+            # Generate continuation prompt without the end trigger
             template = self.templates["chat_end"]
             continuation = template.format(**sections)
             
@@ -175,9 +180,7 @@ Critical Requirements:
 {requirements}
 
 Files of Interest:
-{files}
-
-End of Chat."""
+{files}"""  # Removed "End of Chat" from template
         }
         return templates.get(template_name, "")
         
@@ -202,6 +205,4 @@ Critical Requirements:
 - Always use aiqleads/ directory structure
 - Update existing files instead of creating new ones
 - Follow FILE_STRUCTURE_GUIDELINES.md
-- Maintain history
-
-End of Chat."""
+- Maintain history"""
