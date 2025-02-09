@@ -1,70 +1,79 @@
-# AIQLeads Continuation Procedure
+# Chat Continuation Procedure
 
-## Session Start
+## Overview
+This document outlines the standardized procedure for ending and continuing chat sessions.
 
-1. Status Check
-   ```python
-   # Get current status
-   status = tracker.get_status_summary()
-   print("Current Status:", status)
-   ```
+## End Chat Trigger
+To initiate the end sequence, type:
+```
+End chat sequence.
+```
 
-2. File Review Order
-   - Check documentation updates
-   - Review component status
-   - Validate file locations
-   - Verify dependencies
+## Required Components
+The system will automatically collect data from:
+1. Project Status (aiqleads/data/project_status.json)
+2. Component Registry (aiqleads/data/component_registry.json)
+3. Template Generator (aiqleads/core/template_generator.py)
+4. Project Tracking (aiqleads/core/project_tracking.py)
 
-3. Environment Setup
-   ```bash
-   # Environment variables
-   cp .env.example .env
-   # Update with necessary credentials
-   ```
+## State Collection
+The system will gather:
+1. Current repository state
+2. Active branch information
+3. Completed and pending tasks
+4. Modified files
+5. Critical requirements
 
-## During Development
+## Output Format
+The continuation prompt will always follow this format:
+```
+# Prompt for Next Chat
+Please continue with repository: [url]
+- Branch: [branch]
+- Owner: [owner]
+- Access: [access]
 
-1. File Location Validation
-   ```python
-   validator = PathValidator()
-   is_valid = validator.validate_path("backend/api/v1/leads.py")
-   ```
+Current Status:
+- [status items from project_status.json]
 
-2. Status Updates
-   ```python
-   tracker.update_status(
-       component_id="backend/api/v1/leads.py",
-       status="🟡 In Progress"
-   )
-   ```
+Next Tasks:
+- [pending tasks from project_tracking.py]
 
-3. Documentation Updates
-   - Keep UNIVERSAL_PROMPT.md current
-   - Update component status
-   - Add implementation notes
+Critical Requirements:
+- [requirements from template_generator.py]
 
-## Session End
+Files of Interest:
+- [relevant files from component_registry.json]
 
-1. Status Documentation
-   ```python
-   # Get final status
-   final_status = tracker.get_status_summary()
-   print("Session End Status:", final_status)
-   ```
+End of Chat.
+```
 
-2. Next Steps
-   - Document completed work
-   - List pending tasks
-   - Note any blockers
-   - Update priorities
+## Validation Steps
+The system will:
+1. Verify data consistency using utils/validation.py
+2. Check project status in project_status.json
+3. Validate component registry
+4. Ensure clean resource closure
 
-3. Cleanup
-   - Commit documentation
-   - Update tracking files
-   - Validate file locations
+## Error Handling
+If errors occur:
+1. Log error details using utils/logging.py
+2. Attempt cleanup procedures
+3. Generate safe continuation data
+4. Document error state
 
-4. End of Session Command
-   When typing "End chat", "End of chat", or "End session":
-   - All above steps are executed
-   - Status is saved
-   - Next session brief is generated
+## Integration Points
+- Project Status: data/project_status.json
+- Component Registry: data/component_registry.json
+- Validation System: utils/validation.py
+- Logging System: utils/logging.py
+- Template System: core/template_generator.py
+- Project Tracking: core/project_tracking.py
+
+## Implementation Notes
+1. Never skip validation steps
+2. Always generate continuation data
+3. Include all critical rules
+4. Document current state
+5. Specify next tasks
+6. End with "End of Chat."
