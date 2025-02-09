@@ -7,7 +7,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from ..utils.validation import validate_data, validate_file_path
 from ..utils.logging import log_operation
 
@@ -15,12 +15,35 @@ class TemplateGenerator:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.base_dir = "aiqleads"
-        self.end_trigger = "End of chat"  # Updated trigger phrase
+        self.end_trigger = "End of chat"
+        self.mvp_mode = False  # Flag to handle MVP-specific behavior
         self.templates = {
             "chat_end": self._load_template("chat_end"),
             "chat_start": self._load_template("chat_start"),
             "continuation": self._load_template("continuation")
         }
+        
+    def set_mvp_mode(self, enabled: bool) -> None:
+        """Enable or disable MVP development mode"""
+        self.mvp_mode = enabled
+        self.logger.info(f"MVP mode {'enabled' if enabled else 'disabled'}")
+        
+    def validate_mvp_path(self, path: str) -> bool:
+        """Special validation for MVP file paths"""
+        if not self.mvp_mode:
+            return False
+            
+        valid_prefixes = [
+            "backend/",
+            "ai_models/",
+            "scraping/",
+            "services/",
+            "deployment/",
+            "tests/",
+            f"{self.base_dir}/"
+        ]
+        
+        return any(path.startswith(prefix) for prefix in valid_prefixes)
         
     def should_generate_end_sequence(self, message: str) -> bool:
         """Check if message should trigger end sequence"""
@@ -29,14 +52,14 @@ class TemplateGenerator:
     def generate_end_sequence(self, state: Dict[str, Any]) -> str:
         """Generate standardized end sequence using existing file structure"""
         try:
-            # Validate state data and file paths
+            # Validate state data
             if not validate_data(state, "end_sequence"):
                 raise ValueError("Invalid state data")
                 
-            # Ensure all paths are within aiqleads directory
+            # Validate paths based on mode
             self._validate_paths(state)
                 
-            # Load current project status from correct path
+            # Load current project status
             status_path = os.path.join(self.base_dir, "data", "project_status.json")
             if not os.path.exists(status_path):
                 raise FileNotFoundError(f"Project status file not found at {status_path}")
@@ -44,7 +67,7 @@ class TemplateGenerator:
             with open(status_path, "r") as f:
                 status = json.load(f)
                 
-            # Format template sections using existing files
+            # Format template sections
             sections = {
                 "repository": self._format_repository_section(state),
                 "status": self._format_status_section(status),
@@ -53,7 +76,7 @@ class TemplateGenerator:
                 "files": self._format_files_section()
             }
             
-            # Generate continuation prompt without the end trigger
+            # Generate continuation prompt
             template = self.templates["chat_end"]
             continuation = template.format(**sections)
             
@@ -64,7 +87,8 @@ class TemplateGenerator:
             log_operation("end_sequence_generation", {
                 "timestamp": datetime.now().isoformat(),
                 "status": "success",
-                "sections": list(sections.keys())
+                "sections": list(sections.keys()),
+                "mvp_mode": self.mvp_mode
             })
             
             return continuation
@@ -74,10 +98,14 @@ class TemplateGenerator:
             return self._generate_safe_continuation(state, str(e))
             
     def _validate_paths(self, state: Dict[str, Any]) -> None:
-        """Ensure all paths are within aiqleads directory"""
+        """Ensure all paths are valid based on current mode"""
         for path in state.get("active_files", []):
-            if not validate_file_path(path, self.base_dir):
-                raise ValueError(f"Invalid file path: {path} - Must be within {self.base_dir}/")
+            if self.mvp_mode:
+                if not self.validate_mvp_path(path):
+                    raise ValueError(f"Invalid MVP path: {path}")
+            else:
+                if not validate_file_path(path, self.base_dir):
+                    raise ValueError(f"Invalid file path: {path} - Must be within {self.base_dir}/")
             
     def _format_repository_section(self, state: Dict[str, Any]) -> str:
         """Format repository information section"""
@@ -115,11 +143,23 @@ class TemplateGenerator:
         
     def _format_requirements_section(self, status: Dict[str, Any]) -> str:
         """Format critical requirements section from status"""
-        requirements = status.get("critical_notes", [
-            "Always use aiqleads/ directory structure",
+        base_requirements = [
             "Update existing files instead of creating new ones",
-            "Follow FILE_STRUCTURE_GUIDELINES.md"
-        ])
+            "Maintain history"
+        ]
+        
+        if self.mvp_mode:
+            requirements = [
+                "Follow MVP structure in technical documentation",
+                "Create files in appropriate MVP directories",
+                "Maintain consistency with MVP architecture"
+            ] + base_requirements
+        else:
+            requirements = [
+                "Always use aiqleads/ directory structure",
+                "Follow FILE_STRUCTURE_GUIDELINES.md"
+            ] + base_requirements
+            
         return "\n".join(f"- {req}" for req in requirements)
         
     def _format_files_section(self) -> str:
@@ -133,10 +173,11 @@ class TemplateGenerator:
             # Get active components
             active = registry.get("active_components", [])
             
-            # Validate all paths
+            # Validate paths based on mode
             valid_files = [
                 file for file in active 
-                if validate_file_path(file, self.base_dir)
+                if (self.mvp_mode and self.validate_mvp_path(file)) or
+                   (not self.mvp_mode and validate_file_path(file, self.base_dir))
             ]
             
             return "\n".join(f"- {file}" for file in valid_files)
@@ -152,18 +193,22 @@ class TemplateGenerator:
         # Update timestamp
         status["last_updated"] = datetime.now().isoformat()
         
-        # Update active files
+        # Update active files based on mode
         if "current_state" not in status:
             status["current_state"] = {}
+            
         status["current_state"]["active_files"] = [
             f for f in state.get("active_files", [])
-            if validate_file_path(f, self.base_dir)
+            if (self.mvp_mode and self.validate_mvp_path(f)) or
+               (not self.mvp_mode and validate_file_path(f, self.base_dir))
         ]
+        
+        status["current_state"]["mvp_mode"] = self.mvp_mode
         
         # Write updated status
         with open(status_path, "w") as f:
             json.dump(status, f, indent=4)
-        
+            
     def _load_template(self, template_name: str) -> str:
         """Load template from file"""
         templates = {
@@ -180,29 +225,6 @@ Critical Requirements:
 {requirements}
 
 Files of Interest:
-{files}"""  # Removed "End of Chat" from template
+{files}"""
         }
         return templates.get(template_name, "")
-        
-    def _generate_safe_continuation(self, state: Dict[str, Any], error: str) -> str:
-        """Generate safe continuation for error cases"""
-        return f"""# Prompt for Next Chat
-Please continue with repository: {state.get('repo_url', 'UNKNOWN')}
-- Branch: {state.get('branch', 'UNKNOWN')}
-- Owner: {state.get('owner', 'UNKNOWN')}
-- Access: {state.get('access', 'UNKNOWN')}
-
-Current Status:
-- Error occurred: {error}
-- Recovery needed
-
-Next Tasks:
-- Resolve end sequence error
-- Verify system state
-- Complete pending operations
-
-Critical Requirements:
-- Always use aiqleads/ directory structure
-- Update existing files instead of creating new ones
-- Follow FILE_STRUCTURE_GUIDELINES.md
-- Maintain history"""
