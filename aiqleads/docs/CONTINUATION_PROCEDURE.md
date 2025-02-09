@@ -6,7 +6,7 @@ This document outlines the standardized procedure for ending and continuing chat
 ## End Chat Trigger
 To initiate the end sequence, type:
 ```
-End chat sequence.
+End of chat
 ```
 
 ## Required Components
@@ -44,8 +44,6 @@ Critical Requirements:
 
 Files of Interest:
 - [relevant files from component_registry.json]
-
-End of Chat.
 ```
 
 ## Validation Steps
@@ -76,4 +74,3 @@ If errors occur:
 3. Include all critical rules
 4. Document current state
 5. Specify next tasks
-6. End with "End of Chat."
