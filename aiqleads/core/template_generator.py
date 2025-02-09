@@ -1,213 +1,151 @@
 """
-Template generator for AIQLeads chat sessions.
-Handles creation of continuation messages and session documentation.
+Template generation system for AIQLeads
+Handles all template and sequence generation
 """
+
 import json
+import logging
 from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Any
+from ..utils.validation import validate_data
+from ..utils.logging import log_operation
 
 class TemplateGenerator:
-    """
-    Generates standardized templates for chat sessions.
-    """
-    
     def __init__(self):
-        self.status_file = Path("current_status.json")
-        self.template_dir = Path("templates")
-        self._ensure_templates_exist()
-    
-    def _ensure_templates_exist(self) -> None:
-        """Ensure all required templates exist."""
-        self.template_dir.mkdir(exist_ok=True)
-        
-        templates = {
-            "continuation": self._default_continuation_template(),
-            "session_summary": self._default_session_template(),
-            "status_update": self._default_status_template()
+        self.logger = logging.getLogger(__name__)
+        self.templates = {
+            "chat_end": self._load_template("chat_end"),
+            "chat_start": self._load_template("chat_start"),
+            "continuation": self._load_template("continuation")
         }
         
-        for name, content in templates.items():
-            template_file = self.template_dir / f"{name}.txt"
-            if not template_file.exists():
-                template_file.write_text(content)
-    
-    def _default_continuation_template(self) -> str:
-        """Default continuation message template."""
-        return '''I'm continuing work on the AIQLeads project. IMPORTANT: This is an existing project with an established structure - do not create new root directories or modify the structure. All changes must be made within the existing structure.
-
-First, please review these files in order:
-1. aiqleads/docs/CONTINUATION_PROCEDURE.md
-2. aiqleads/docs/UNIVERSAL_PROMPT.md
-3. docs/PROJECT_STRUCTURE.md
-4. REPOSITORY_STATUS.md
-
-CRITICAL RULES:
-- All changes must be inside the aiqleads/ directory
-- Never modify the core project structure
-- Never create alternate versions of existing files
-- Use project_tracking.py for all status updates
-- Always validate paths against PROJECT_STRUCTURE.md
-
-Repository Information:
-* GitHub Repository: {repo_url}
-* Owner: {owner}
-* Access Type: {access_type}
-* Branch: {branch}
+    def generate_end_sequence(self, state: Dict[str, Any]) -> str:
+        """Generate standardized end sequence"""
+        try:
+            # Validate state data
+            if not validate_data(state, "end_sequence"):
+                raise ValueError("Invalid state data")
+                
+            # Load current project status
+            with open("aiqleads/data/project_status.json", "r") as f:
+                status = json.load(f)
+                
+            # Format template sections
+            sections = {
+                "repository": self._format_repository_section(state),
+                "status": self._format_status_section(status),
+                "tasks": self._format_tasks_section(status),
+                "requirements": self._format_requirements_section(),
+                "files": self._format_files_section()
+            }
+            
+            # Generate continuation prompt
+            template = self.templates["chat_end"]
+            continuation = template.format(**sections)
+            
+            # Log generation
+            log_operation("end_sequence_generation", {
+                "timestamp": datetime.now().isoformat(),
+                "status": "success",
+                "sections": list(sections.keys())
+            })
+            
+            return continuation
+            
+        except Exception as e:
+            self.logger.error(f"Error generating end sequence: {e}")
+            return self._generate_safe_continuation(state, str(e))
+            
+    def _format_repository_section(self, state: Dict[str, Any]) -> str:
+        """Format repository information section"""
+        return f"""Please continue with repository: {state.get('repo_url')}
+- Branch: {state.get('branch')}
+- Owner: {state.get('owner')}
+- Access: {state.get('access')}"""
+        
+    def _format_status_section(self, status: Dict[str, Any]) -> str:
+        """Format current status section"""
+        completed = status.get("completed", [])
+        current = status.get("current_state", {})
+        
+        status_lines = []
+        for item in completed:
+            status_lines.append(f"- {item}")
+        
+        if current:
+            status_lines.append(f"- Current: {current.get('description', '')}")
+            
+        return "\n".join(status_lines)
+        
+    def _format_tasks_section(self, status: Dict[str, Any]) -> str:
+        """Format next tasks section"""
+        pending = status.get("pending", [])
+        return "\n".join(f"- {task}" for task in pending)
+        
+    def _format_requirements_section(self) -> str:
+        """Format critical requirements section"""
+        requirements = [
+            "Preserve all content",
+            "No rewrites, only updates",
+            "Add without removing",
+            "Maintain history",
+            "Use existing AIQLeads file structure",
+        ]
+        return "\n".join(f"- {req}" for req in requirements)
+        
+    def _format_files_section(self) -> str:
+        """Format files of interest section"""
+        # Load component registry
+        with open("aiqleads/data/component_registry.json", "r") as f:
+            registry = json.load(f)
+            
+        # Get active components
+        active = registry.get("active_components", [])
+        return "\n".join(f"- {file}" for file in active)
+        
+    def _load_template(self, template_name: str) -> str:
+        """Load template from file"""
+        templates = {
+            "chat_end": """# Prompt for Next Chat
+{repository}
 
 Current Status:
-- Branch: {branch}
-- Last Component: {last_component}
-- Status: {current_status}
-- Next Task: {next_task}
+{status}
 
-Recent Changes:
-{recent_changes}
+Next Tasks:
+{tasks}
 
-Development Focus:
-- Primary Goal: {goal}
-- Components: {components}
-- Requirements: {requirements}'''
-    
-    def _default_session_template(self) -> str:
-        """Default session summary template."""
-        return '''### {date}
-#### Session Summary
-- Completed: {completed}
-- Current State: {current_state}
-- Next Steps: {next_steps}
-- Known Issues: {known_issues}'''
-    
-    def _default_status_template(self) -> str:
-        """Default status update template."""
-        return '''Component: {component_id}
-Status: {status}
-Last Update: {timestamp}
-Notes: {notes}
-Next Steps: {next_steps}'''
-    
-    def generate_continuation_message(
-        self,
-        status_data: Dict,
-        recent_changes: List[str]
-    ) -> str:
-        """
-        Generate continuation message from current status.
+Critical Requirements:
+{requirements}
+
+Files of Interest:
+{files}
+
+End of Chat."""
+        }
+        return templates.get(template_name, "")
         
-        Args:
-            status_data: Current project status
-            recent_changes: List of recent changes
-            
-        Returns:
-            str: Formatted continuation message
-        """
-        template_file = self.template_dir / "continuation.txt"
-        template = template_file.read_text()
-        
-        changes_formatted = "\n".join(
-            f"{i+1}. {change}" for i, change in enumerate(recent_changes)
-        )
-        
-        return template.format(
-            repo_url=status_data.get("repo_url"),
-            owner=status_data.get("owner"),
-            access_type=status_data.get("access_type"),
-            branch=status_data.get("branch"),
-            last_component=status_data.get("last_component"),
-            current_status=status_data.get("status"),
-            next_task=status_data.get("next_task"),
-            recent_changes=changes_formatted,
-            goal=status_data.get("goal"),
-            components=status_data.get("components"),
-            requirements=status_data.get("requirements")
-        )
-    
-    def generate_session_summary(
-        self,
-        completed: List[str],
-        current_state: str,
-        next_steps: List[str],
-        known_issues: List[str]
-    ) -> str:
-        """
-        Generate session summary.
-        
-        Args:
-            completed: List of completed items
-            current_state: Current state description
-            next_steps: List of next steps
-            known_issues: List of known issues
-            
-        Returns:
-            str: Formatted session summary
-        """
-        template_file = self.template_dir / "session_summary.txt"
-        template = template_file.read_text()
-        
-        return template.format(
-            date=datetime.now().strftime("%Y-%m-%d"),
-            completed="\n- ".join(completed),
-            current_state=current_state,
-            next_steps="\n- ".join(next_steps),
-            known_issues="\n- ".join(known_issues)
-        )
-    
-    def generate_status_update(
-        self,
-        component_id: str,
-        status: str,
-        notes: str,
-        next_steps: List[str]
-    ) -> str:
-        """
-        Generate status update.
-        
-        Args:
-            component_id: Component identifier
-            status: Current status
-            notes: Status notes
-            next_steps: List of next steps
-            
-        Returns:
-            str: Formatted status update
-        """
-        template_file = self.template_dir / "status_update.txt"
-        template = template_file.read_text()
-        
-        return template.format(
-            component_id=component_id,
-            status=status,
-            timestamp=datetime.now().isoformat(),
-            notes=notes,
-            next_steps="\n- ".join(next_steps)
-        )
-    
-    def load_custom_template(self, template_name: str) -> Optional[str]:
-        """
-        Load a custom template.
-        
-        Args:
-            template_name: Name of template to load
-            
-        Returns:
-            str: Template content if exists, None otherwise
-        """
-        template_file = self.template_dir / f"{template_name}.txt"
-        if template_file.exists():
-            return template_file.read_text()
-        return None
-    
-    def save_custom_template(
-        self,
-        template_name: str,
-        content: str
-    ) -> None:
-        """
-        Save a custom template.
-        
-        Args:
-            template_name: Name for the template
-            content: Template content
-        """
-        template_file = self.template_dir / f"{template_name}.txt"
-        template_file.write_text(content)
+    def _generate_safe_continuation(self, state: Dict[str, Any], error: str) -> str:
+        """Generate safe continuation for error cases"""
+        return f"""# Prompt for Next Chat
+Please continue with repository: {state.get('repo_url', 'UNKNOWN')}
+- Branch: {state.get('branch', 'UNKNOWN')}
+- Owner: {state.get('owner', 'UNKNOWN')}
+- Access: {state.get('access', 'UNKNOWN')}
+
+Current Status:
+- Error occurred: {error}
+- Recovery needed
+
+Next Tasks:
+- Resolve end sequence error
+- Verify system state
+- Complete pending operations
+
+Critical Requirements:
+- Preserve all content
+- Use existing file structure
+- Maintain history
+- Add without removing
+
+End of Chat."""
