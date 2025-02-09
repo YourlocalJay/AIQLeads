@@ -1,1 +1,0 @@
-[Content omitted for brevity - this is the validator implementation I created earlier]
