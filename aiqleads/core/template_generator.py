@@ -26,11 +26,17 @@ class TemplateGenerator:
         return message.strip().lower() == self.end_trigger.lower()
         
     def generate_start_sequence(self, repository: Dict[str, str]) -> str:
-        """Generate minimal start sequence with just repository info"""
-        return f"""Please continue with repository: {repository.get('repo_url')}
+        """Generate start sequence with repository info and required reading"""
+        return f"""# Prompt for Next Chat
+Please continue with repository: {repository.get('repo_url')}
 - Branch: {repository.get('branch')}
 - Owner: {repository.get('owner')}
-- Access: {repository.get('access')}"""
+- Access: {repository.get('access')}
+
+Required Reading:
+- aiqleads/docs/FILE_STRUCTURE_GUIDELINES.md - understand directory structure
+- aiqleads/docs/CONTINUATION_PROCEDURE.md - review chat protocols
+- aiqleads/data/project_status.json - check current state"""
         
     def generate_end_sequence(self, state: Dict[str, Any]) -> str:
         """Generate standardized end sequence using existing file structure"""
@@ -53,10 +59,7 @@ class TemplateGenerator:
             # Format template sections
             sections = {
                 "repository": self._format_repository_section(state),
-                "status": self._format_status_section(status),
-                "tasks": self._format_tasks_section(status),
-                "requirements": self._format_requirements_section(status),
-                "files": self._format_files_section()
+                "required_reading": self._format_required_reading()
             }
             
             # Generate continuation prompt
@@ -97,59 +100,13 @@ class TemplateGenerator:
 - Branch: {state['branch']}
 - Owner: {state['owner']}
 - Access: {state['access']}"""
-        
-    def _format_status_section(self, status: Dict[str, Any]) -> str:
-        """Format current status section using existing status"""
-        completed = status.get("completed", [])
-        current = status.get("current_state", {})
-        
-        status_lines = []
-        for item in completed[-3:]:  # Show last 3 completed items
-            status_lines.append(f"- {item}")
-        
-        if current:
-            desc = current.get("description", "").strip()
-            if desc:
-                status_lines.append(f"- Current: {desc}")
-                
-        return "\n".join(status_lines)
-        
-    def _format_tasks_section(self, status: Dict[str, Any]) -> str:
-        """Format next tasks section from status"""
-        pending = status.get("pending", [])
-        return "\n".join(f"- {task}" for task in pending)
-        
-    def _format_requirements_section(self, status: Dict[str, Any]) -> str:
-        """Format critical requirements section from status"""
-        requirements = status.get("critical_notes", [
-            "Always use aiqleads/ directory structure",
-            "Update existing files instead of creating new ones",
-            "Follow FILE_STRUCTURE_GUIDELINES.md"
-        ])
-        return "\n".join(f"- {req}" for req in requirements)
-        
-    def _format_files_section(self) -> str:
-        """Format files of interest section from registry"""
-        registry_path = os.path.join(self.base_dir, "data", "component_registry.json")
-        
-        try:
-            with open(registry_path, "r") as f:
-                registry = json.load(f)
-                
-            # Get active components
-            active = registry.get("active_components", [])
-            
-            # Validate all paths
-            valid_files = [
-                file for file in active 
-                if validate_file_path(file, self.base_dir)
-            ]
-            
-            return "\n".join(f"- {file}" for file in valid_files)
-            
-        except FileNotFoundError:
-            self.logger.error(f"Component registry not found at {registry_path}")
-            return "- No active files found"
+
+    def _format_required_reading(self) -> str:
+        """Format required reading section"""
+        return """Required Reading:
+- aiqleads/docs/FILE_STRUCTURE_GUIDELINES.md - understand directory structure
+- aiqleads/docs/CONTINUATION_PROCEDURE.md - review chat protocols
+- aiqleads/data/project_status.json - check current state"""
             
     def _update_project_status(self, status: Dict[str, Any], state: Dict[str, Any]) -> None:
         """Update project status file with latest state"""
@@ -176,20 +133,10 @@ class TemplateGenerator:
             "chat_end": """# Prompt for Next Chat
 {repository}
 
-Current Status:
-{status}
+{required_reading}""",
+            "chat_start": """# Prompt for Next Chat
+{repository}
 
-Next Tasks:
-{tasks}
-
-Critical Requirements:
-{requirements}
-
-Files of Interest:
-{files}""",
-            "chat_start": """Please continue with repository: {repo_url}
-- Branch: {branch}
-- Owner: {owner}
-- Access: {access}"""
+{required_reading}"""
         }
         return templates.get(template_name, "")
