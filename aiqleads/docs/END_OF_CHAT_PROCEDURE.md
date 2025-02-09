@@ -27,6 +27,52 @@ An End of Chat procedure is initiated when:
   * Rationale for modifications
   * Potential impact on project
 
+## Comprehensive Chat Logging Procedure
+
+### 1. Log File Generation
+- Create a new log file in `aiqleads/logs/`
+- Filename format: `YYYY-MM-DD_chat_log.md`
+
+### 2. Log Entry Components
+A complete log entry MUST include:
+
+#### Metadata Tracking
+- **Timestamp**: Full date and time of chat session
+- **LLM Model**: Specific model and version used
+- **Chat Context**: Unique identifier or title
+- **Primary Development Focus**
+
+#### Change Documentation
+- **Detailed File Changes**:
+  * Files Added
+    - Complete path
+    - Purpose of addition
+    - Key content highlights
+  * Files Modified
+    - Complete path
+    - Previous version identifier
+    - Specific changes made
+  * Files Deleted
+    - Complete path
+    - Reason for deletion
+
+#### Technical Impact Assessment
+- Lines of code added/removed
+- Complexity of changes
+- Strategic significance
+
+#### Forward-Looking Elements
+- Next recommended actions
+- Potential risks or considerations
+- Areas requiring future attention
+
+### 3. Logging Verification Checklist
+- [ ] All files changed are documented
+- [ ] Metadata is complete and accurate
+- [ ] Strategic context is captured
+- [ ] Log entry follows standard template
+- [ ] No sensitive information is exposed
+
 ## Continuation Message Generation
 
 ### Required Components
@@ -64,6 +110,7 @@ An End of Chat procedure is initiated when:
 Before Ending Chat, Confirm:
 - [ ] Project status has been updated
 - [ ] Changes are documented
+- [ ] Chat log is generated
 - [ ] Continuation message is comprehensive
 - [ ] Next steps are clear and actionable
 - [ ] No critical tasks are left unaddressed
@@ -79,6 +126,9 @@ If unable to complete full procedure:
 - Maintain continuous, traceable project development
 - Prioritize clarity and purposeful progression
 
+## References
+- See `CHAT_LOGGING_PROCEDURE.md` for detailed logging guidelines
+
 ---
 
-*Last Updated: [CURRENT_TIMESTAMP]*
+*Last Updated: February 09, 2025*
