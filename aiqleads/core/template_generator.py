@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Dict, List, Any
 from ..utils.validation import validate_data, validate_file_path
 from ..utils.logging import log_operation
-from ..utils.monitoring import performance_monitor, error_tracker
 
 class TemplateGenerator:
     def __init__(self):
@@ -22,22 +21,17 @@ class TemplateGenerator:
             "chat_start": self._load_template("chat_start")
         }
         
-    @performance_monitor.track_operation("end_sequence_check")
     def should_generate_end_sequence(self, message: str) -> bool:
         """Check if message should trigger end sequence"""
         return message.strip().lower() == self.end_trigger.lower()
         
-    @performance_monitor.track_operation("start_sequence_generation")
-    @error_tracker.track_errors("sequence_generation")
-    def generate_start_sequence(self, state: Dict[str, Any]) -> str:
-        """Generate standardized start sequence"""
-        return f"""Please continue with repository: {state.get('repo_url')}
-- Branch: {state.get('branch')}
-- Owner: {state.get('owner')}
-- Access: {state.get('access')}"""
+    def generate_start_sequence(self, repository: Dict[str, str]) -> str:
+        """Generate minimal start sequence with just repository info"""
+        return f"""Please continue with repository: {repository.get('repo_url')}
+- Branch: {repository.get('branch')}
+- Owner: {repository.get('owner')}
+- Access: {repository.get('access')}"""
         
-    @performance_monitor.track_operation("end_sequence_generation")
-    @error_tracker.track_errors("sequence_generation")
     def generate_end_sequence(self, state: Dict[str, Any]) -> str:
         """Generate standardized end sequence using existing file structure"""
         try:
@@ -85,14 +79,12 @@ class TemplateGenerator:
             self.logger.error(f"Error generating end sequence: {e}")
             return self._generate_safe_continuation(state, str(e))
             
-    @error_tracker.track_errors("path_validation")    
     def _validate_paths(self, state: Dict[str, Any]) -> None:
         """Ensure all paths are within aiqleads directory"""
         for path in state.get("active_files", []):
             if not validate_file_path(path, self.base_dir):
                 raise ValueError(f"Invalid file path: {path} - Must be within {self.base_dir}/")
             
-    @performance_monitor.track_operation("repository_section_format")
     def _format_repository_section(self, state: Dict[str, Any]) -> str:
         """Format repository information section"""
         required_fields = ["repo_url", "branch", "owner", "access"]
@@ -106,7 +98,6 @@ class TemplateGenerator:
 - Owner: {state['owner']}
 - Access: {state['access']}"""
         
-    @performance_monitor.track_operation("status_section_format")
     def _format_status_section(self, status: Dict[str, Any]) -> str:
         """Format current status section using existing status"""
         completed = status.get("completed", [])
@@ -123,13 +114,11 @@ class TemplateGenerator:
                 
         return "\n".join(status_lines)
         
-    @performance_monitor.track_operation("tasks_section_format")
     def _format_tasks_section(self, status: Dict[str, Any]) -> str:
         """Format next tasks section from status"""
         pending = status.get("pending", [])
         return "\n".join(f"- {task}" for task in pending)
         
-    @performance_monitor.track_operation("requirements_section_format")
     def _format_requirements_section(self, status: Dict[str, Any]) -> str:
         """Format critical requirements section from status"""
         requirements = status.get("critical_notes", [
@@ -139,8 +128,6 @@ class TemplateGenerator:
         ])
         return "\n".join(f"- {req}" for req in requirements)
         
-    @performance_monitor.track_operation("files_section_format")
-    @error_tracker.track_errors("file_operations")
     def _format_files_section(self) -> str:
         """Format files of interest section from registry"""
         registry_path = os.path.join(self.base_dir, "data", "component_registry.json")
@@ -164,8 +151,6 @@ class TemplateGenerator:
             self.logger.error(f"Component registry not found at {registry_path}")
             return "- No active files found"
             
-    @performance_monitor.track_operation("status_update")
-    @error_tracker.track_errors("file_operations")
     def _update_project_status(self, status: Dict[str, Any], state: Dict[str, Any]) -> None:
         """Update project status file with latest state"""
         status_path = os.path.join(self.base_dir, "data", "project_status.json")
