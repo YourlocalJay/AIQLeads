@@ -7,6 +7,12 @@ import hashlib
 import yaml
 
 class ChatLogGenerator:
+    SUPPORTED_MODELS = [
+        'Claude 3.5 Haiku',
+        'Claude 3.5 Sonnet',
+        'Claude 3 Opus'
+    ]
+
     def __init__(self, repo_path):
         """
         Initialize the chat log generator with repository context
@@ -15,10 +21,21 @@ class ChatLogGenerator:
         """
         self.repo_path = repo_path
         self.repo = git.Repo(repo_path)
-        self.logs_dir = os.path.join(repo_path, 'aiqleads', 'logs')
+        self.logs_dir = os.path.join(repo_path, 'aiqleads', 'logs', 'claude_chats')
         
         # Ensure logs directory exists
         os.makedirs(self.logs_dir, exist_ok=True)
+    
+    def validate_model(self, model):
+        """
+        Validate that the provided model is supported
+        
+        :param model: LLM model name
+        :return: Validated model name or raise ValueError
+        """
+        if model not in self.SUPPORTED_MODELS:
+            raise ValueError(f"Unsupported Claude model. Supported models are: {', '.join(self.SUPPORTED_MODELS)}")
+        return model
     
     def generate_unique_chat_id(self):
         """
@@ -58,8 +75,8 @@ class ChatLogGenerator:
         return changes
     
     def generate_log_entry(self, 
-                            llm_model='Claude 3.5 Haiku', 
-                            chat_title='Unnamed Chat', 
+                            llm_model='Claude 3.5 Sonnet', 
+                            chat_title='Unnamed Development Chat', 
                             primary_focus='General Development'):
         """
         Generate a comprehensive log entry
@@ -69,6 +86,9 @@ class ChatLogGenerator:
         :param primary_focus: Main area of development
         :return: Markdown log entry
         """
+        # Validate model
+        validated_model = self.validate_model(llm_model)
+        
         current_time = datetime.datetime.now()
         file_changes = self.track_file_changes()
         chat_id = self.generate_unique_chat_id()
@@ -84,14 +104,14 @@ class ChatLogGenerator:
         lines_added = sum(count_lines(f) for f in file_changes['added'])
         lines_modified = sum(count_lines(f) for f in file_changes['modified'])
         
-        log_content = f"""# Chat Session Log
+        log_content = f"""# Claude Development Chat Log
 
 ## Metadata
 - **Timestamp**: {current_time.isoformat()}
-- **LLM Model**: {llm_model}
+- **LLM Model**: {validated_model}
 - **Chat ID**: {chat_id}
 - **Chat Title**: {chat_title}
-- **Primary Focus**: {primary_focus}
+- **Primary Development Focus**: {primary_focus}
 
 ## Changes Made
 
@@ -109,14 +129,18 @@ class ChatLogGenerator:
 - **Lines of Code Modified**: {lines_modified}
 - **Total Project Impact**: {'Significant' if lines_added + lines_modified > 100 else 'Minor'}
 
+## Model Usage Notes
+- Default model for this development session
+- Switched due to usage limits or specific requirements
+
 ## Next Recommended Actions
-- Conduct thorough code review
+- Review changes thoroughly
 - Update project documentation
-- Validate new implementations
+- Validate implementation details
 
 ## Potential Risks/Considerations
-- Ensure backward compatibility
-- Verify integration with existing systems
+- Ensure compatibility across different Claude models
+- Validate code consistency
 
 ---
 """
@@ -140,7 +164,7 @@ class ChatLogGenerator:
         
         :param log_content: Markdown log content
         """
-        filename = f"{datetime.datetime.now().strftime('%Y-%m-%d')}_chat_log.md"
+        filename = f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}_claude_chat_log.md"
         filepath = os.path.join(self.logs_dir, filename)
         
         with open(filepath, 'w') as log_file:
@@ -148,7 +172,7 @@ class ChatLogGenerator:
         
         # Stage and commit the log file
         self.repo.index.add([filepath])
-        self.repo.index.commit(f"Add chat log: {filename}")
+        self.repo.index.commit(f"Add Claude chat log: {filename}")
     
     def run(self, **kwargs):
         """
@@ -165,7 +189,7 @@ class ChatLogGenerator:
 if __name__ == '__main__':
     generator = ChatLogGenerator('/path/to/repo')
     log = generator.run(
-        llm_model='Claude 3.5 Haiku',
+        llm_model='Claude 3.5 Sonnet',
         chat_title='AIQLeads Development Session',
         primary_focus='AI Cost Optimization'
     )
