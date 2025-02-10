@@ -1,0 +1,138 @@
+name: Project Automation
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - closed
+      - ready_for_review
+      - review_requested
+
+jobs:
+  update-project-status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Project Status
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            
+            const PROJECT_ID = 3;  // From your shared URL
+            
+            let newStatus;
+            let commitStatus;
+            let bugFixes = 'No';
+            let unitTestsCreated = 'No';
+            let llmUsed = 'Claude 3.5 Sonnet';
+            
+            // Set statuses based on PR state
+            if (pr.merged) {
+              newStatus = 'Committed';
+              commitStatus = 'Merged to Main';
+            } else if (pr.state === 'closed' && !pr.merged) {
+              newStatus = 'To-Do';
+              commitStatus = 'Waiting for PR';
+            } else if (pr.draft) {
+              newStatus = 'Generated';
+              commitStatus = 'PR Open';
+            } else if (pr.state === 'open' && !pr.draft) {
+              newStatus = 'Reviewed';
+              commitStatus = 'PR Open';
+            }
+            
+            // Check PR labels for additional information
+            if (pr.labels) {
+              if (pr.labels.find(l => l.name === 'bug')) {
+                bugFixes = 'Yes';
+              }
+              if (pr.labels.find(l => l.name === 'tests')) {
+                unitTestsCreated = 'Yes';
+              }
+            }
+            
+            try {
+              // GraphQL mutation to update project item
+              await github.graphql(`
+                mutation($input: UpdateProjectV2ItemFieldValueInput!) {
+                  updateProjectV2ItemFieldValue(input: $input) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }
+              `, {
+                input: {
+                  projectId: `projects/${PROJECT_ID}`,
+                  itemId: pr.node_id,
+                  fieldId: 'Status',
+                  value: {
+                    singleSelectOptionId: newStatus
+                  }
+                }
+              });
+              
+              // Update commit status
+              await github.graphql(`
+                mutation($input: UpdateProjectV2ItemFieldValueInput!) {
+                  updateProjectV2ItemFieldValue(input: $input) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }
+              `, {
+                input: {
+                  projectId: `projects/${PROJECT_ID}`,
+                  itemId: pr.node_id,
+                  fieldId: 'Commit Status',
+                  value: {
+                    singleSelectOptionId: commitStatus
+                  }
+                }
+              });
+              
+              // Update other fields
+              const updateFields = [
+                {
+                  fieldId: 'LLM Used',
+                  value: { singleSelectOptionId: llmUsed }
+                },
+                {
+                  fieldId: 'Bug Fixes',
+                  value: { singleSelectOptionId: bugFixes }
+                },
+                {
+                  fieldId: 'Unit Tests Created',
+                  value: { singleSelectOptionId: unitTestsCreated }
+                }
+              ];
+              
+              for (const field of updateFields) {
+                await github.graphql(`
+                  mutation($input: UpdateProjectV2ItemFieldValueInput!) {
+                    updateProjectV2ItemFieldValue(input: $input) {
+                      projectV2Item {
+                        id
+                      }
+                    }
+                  }
+                `, {
+                  input: {
+                    projectId: `projects/${PROJECT_ID}`,
+                    itemId: pr.node_id,
+                    fieldId: field.fieldId,
+                    value: field.value
+                  }
+                });
+              }
+              
+              console.log(`Updated project item for PR #${pr.number}`);
+              
+            } catch (error) {
+              console.error('Error updating project:', error.message);
+              core.setFailed(error.message);
+            }
