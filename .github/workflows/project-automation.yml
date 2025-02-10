@@ -1,0 +1,43 @@
+name: Project Automation
+
+on:
+  pull_request:
+    types:
+      - closed
+      - opened
+      - reopened
+
+jobs:
+  project-automation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Move PR in Project
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            
+            if (pr.merged) {
+              // If PR was merged, move to "Done"
+              await github.rest.projects.moveCard({
+                card_id: getCardId(pr.number),
+                position: 'bottom',
+                column_id: 'Done'
+              });
+            } else if (pr.state === 'closed') {
+              // If PR was closed without merging
+              await github.rest.projects.moveCard({
+                card_id: getCardId(pr.number),
+                position: 'bottom',
+                column_id: 'Cancelled'
+              });
+            } else if (pr.state === 'open') {
+              // If PR was opened/reopened
+              await github.rest.projects.moveCard({
+                card_id: getCardId(pr.number),
+                position: 'bottom',
+                column_id: 'In Progress'
+              });
+            }
