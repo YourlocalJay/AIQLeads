@@ -3,15 +3,17 @@ name: Project Automation
 on:
   pull_request:
     types:
-      - closed
       - opened
       - reopened
+      - closed
+      - ready_for_review
+      - review_requested
 
 jobs:
-  project-automation:
+  update-project-status:
     runs-on: ubuntu-latest
     steps:
-      - name: Move PR in Project
+      - name: Update Project Status
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.PROJECT_TOKEN }}
@@ -19,25 +21,58 @@ jobs:
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
             
+            let newStatus;
+            let commitStatus;
+            
             if (pr.merged) {
-              // If PR was merged, move to "Done"
-              await github.rest.projects.moveCard({
-                card_id: getCardId(pr.number),
-                position: 'bottom',
-                column_id: 'Done'
-              });
-            } else if (pr.state === 'closed') {
+              // If PR was merged
+              newStatus = 'Committed';
+              commitStatus = 'Merged to Main';
+            } else if (pr.state === 'closed' && !pr.merged) {
               // If PR was closed without merging
-              await github.rest.projects.moveCard({
-                card_id: getCardId(pr.number),
-                position: 'bottom',
-                column_id: 'Cancelled'
-              });
-            } else if (pr.state === 'open') {
-              // If PR was opened/reopened
-              await github.rest.projects.moveCard({
-                card_id: getCardId(pr.number),
-                position: 'bottom',
-                column_id: 'In Progress'
-              });
+              newStatus = 'To-Do';
+              commitStatus = 'Waiting for PR';
+            } else if (pr.draft) {
+              // If PR is in draft
+              newStatus = 'Generated';
+              commitStatus = 'PR Open';
+            } else if (pr.state === 'open' && !pr.draft) {
+              // If PR is open and ready for review
+              newStatus = 'Reviewed';
+              commitStatus = 'PR Open';
+            }
+            
+            // Update both Status and Commit Status fields
+            try {
+              await github.graphql(`
+                mutation UpdateProjectItems($projectId: ID!, $itemId: ID!) {
+                  updateProjectV2ItemFieldValue(
+                    input: {
+                      projectId: $projectId
+                      itemId: $itemId
+                      fieldId: "Status"
+                      value: { singleSelectOptionId: "${newStatus}" }
+                    }
+                  ) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                  
+                  updateProjectV2ItemFieldValue(
+                    input: {
+                      projectId: $projectId
+                      itemId: $itemId
+                      fieldId: "Commit Status"
+                      value: { singleSelectOptionId: "${commitStatus}" }
+                    }
+                  ) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }
+              `);
+            } catch (error) {
+              console.error('Error updating project:', error);
             }
