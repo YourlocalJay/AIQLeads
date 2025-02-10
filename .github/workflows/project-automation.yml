@@ -21,58 +21,54 @@ jobs:
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
             
+            // Get project details
+            const project = await github.rest.projects.listForRepo({
+              owner,
+              repo,
+              state: 'open'
+            });
+            
+            const projectId = project.data.find(p => p.name === 'AIQLeads MVP Development').id;
+            
             let newStatus;
-            let commitStatus;
+            let commitType;
+            let llmUsed = 'Claude 3.5 Sonnet';  // Default LLM
             
             if (pr.merged) {
-              // If PR was merged
               newStatus = 'Committed';
-              commitStatus = 'Merged to Main';
+              commitType = pr.labels.find(l => l.name.startsWith('type:'))?.name || 'New Feature';
             } else if (pr.state === 'closed' && !pr.merged) {
-              // If PR was closed without merging
               newStatus = 'To-Do';
-              commitStatus = 'Waiting for PR';
             } else if (pr.draft) {
-              // If PR is in draft
               newStatus = 'Generated';
-              commitStatus = 'PR Open';
             } else if (pr.state === 'open' && !pr.draft) {
-              // If PR is open and ready for review
               newStatus = 'Reviewed';
-              commitStatus = 'PR Open';
             }
             
-            // Update both Status and Commit Status fields
             try {
+              // Update status fields
               await github.graphql(`
-                mutation UpdateProjectItems($projectId: ID!, $itemId: ID!) {
-                  updateProjectV2ItemFieldValue(
-                    input: {
-                      projectId: $projectId
-                      itemId: $itemId
-                      fieldId: "Status"
-                      value: { singleSelectOptionId: "${newStatus}" }
-                    }
-                  ) {
-                    projectV2Item {
-                      id
-                    }
-                  }
-                  
-                  updateProjectV2ItemFieldValue(
-                    input: {
-                      projectId: $projectId
-                      itemId: $itemId
-                      fieldId: "Commit Status"
-                      value: { singleSelectOptionId: "${commitStatus}" }
-                    }
-                  ) {
-                    projectV2Item {
+                mutation($input: UpdateProjectCardInput!) {
+                  updateProjectCard(input: $input) {
+                    projectCard {
                       id
                     }
                   }
                 }
-              `);
+              `, {
+                input: {
+                  projectId,
+                  note: JSON.stringify({
+                    status: newStatus,
+                    commitType: commitType,
+                    llmUsed: llmUsed,
+                    lastUpdated: new Date().toISOString()
+                  })
+                }
+              });
+              
+              console.log(`Updated project card for PR #${pr.number} to status: ${newStatus}`);
+              
             } catch (error) {
               console.error('Error updating project:', error);
             }
